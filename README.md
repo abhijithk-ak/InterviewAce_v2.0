@@ -67,7 +67,7 @@ AI-powered mock interview platform built with Next.js, featuring real-time AI ev
    GITHUB_CLIENT_SECRET=your-github-client-secret
 
    # MongoDB
-   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/interviewace?retryWrites=true&w=majority
+   MONGODB_URI=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/interviewace
 
    # OpenRouter (Free AI)
    OPENROUTER_API_KEY=your-openrouter-api-key
