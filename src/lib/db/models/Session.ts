@@ -20,6 +20,12 @@ const QuestionSchema = new Schema({
   evaluation: EvaluationSchema,
 })
 
+const ConfigSchema = new Schema({
+  role: String,
+  type: String,
+  difficulty: String,
+}, { _id: false })
+
 const SessionSchema = new Schema(
   {
     userEmail: { type: String, required: true },
@@ -27,11 +33,7 @@ const SessionSchema = new Schema(
     startedAt: { type: Date, required: true },
     endedAt: { type: Date },
 
-    config: {
-      role: String,
-      type: String,
-      difficulty: String,
-    },
+    config: ConfigSchema,
 
     questions: [QuestionSchema],
 

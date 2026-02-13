@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui"
+import { selectQuestions, MAX_QUESTIONS } from "@/lib/questions/bank"
+import type { Question } from "@/lib/questions/bank"
 
 type EvaluationResult = {
   score: number
@@ -26,11 +28,6 @@ type InterviewMessage = {
   }
 }
 
-type Question = {
-  id: string
-  text: string
-}
-
 type QuestionProgress = {
   questionId: string
   followUpUsed: boolean
@@ -45,18 +42,10 @@ type InterviewState = {
   questionProgress: Map<string, QuestionProgress>
   interviewConfig?: {
     role: string
+    type: string
     difficulty: string
   }
 }
-
-const FALLBACK_QUESTIONS: Question[] = [
-  { id: "1", text: "Hello! I'll be conducting your interview today. Let's begin. Can you briefly introduce yourself and tell me about your background?" },
-  { id: "2", text: "That's great! Can you tell me more about a challenging project you worked on?" },
-  { id: "3", text: "Interesting! What technical skills do you consider your strongest?" },
-  { id: "4", text: "Thank you for sharing. How do you approach problem-solving in your work?" },
-  { id: "5", text: "I see. Can you describe a time when you had to work with a difficult team member?" },
-  { id: "6", text: "Good answer. What are your career goals for the next few years?" },
-]
 
 export default function InterviewSession() {
   const router = useRouter()
@@ -70,12 +59,92 @@ export default function InterviewSession() {
   const [input, setInput] = useState("")
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [startedAt] = useState(new Date().toISOString())
   const bottomRef = useRef<HTMLDivElement>(null)
+  const hasSavedRef = useRef(false)
 
   // Prevent hydration issues
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Save interview session when it ends
+  useEffect(() => {
+    async function saveInterviewSession() {
+      if (hasSavedRef.current) return
+      hasSavedRef.current = true
+
+      // Calculate overall score from evaluations
+      const evaluations = Array.from(state.questionProgress.values())
+        .filter((p) => p.evaluation)
+        .map((p) => p.evaluation!)
+
+      const overallScore =
+        evaluations.length > 0
+          ? Math.round(
+              evaluations.reduce((sum, e) => sum + e.score, 0) / evaluations.length
+            )
+          : 0
+
+      // Build questions array - ONLY main questions from state.questions array
+      // Match them with user answers from messages
+      const questionsWithAnswers = state.questions.map((question) => {
+        // Find all messages for this question (AI asks, user responds)
+        const questionMsgIndex = state.messages.findIndex(
+          (m) => m.role === "assistant" && m.meta?.questionId === question.id && m.kind === "main"
+        )
+        
+        // Find the user's answer (next user message after the question)
+        const userAnswer = questionMsgIndex >= 0
+          ? state.messages.slice(questionMsgIndex + 1).find((m) => m.role === "user")
+          : null
+
+        // Get evaluation for this question
+        const progress = state.questionProgress.get(question.id)
+
+        return {
+          text: question.text,
+          answer: userAnswer?.content || "",
+          kind: "main" as const,
+          evaluation: progress?.evaluation
+            ? {
+                score: progress.evaluation.score,
+                confidence: progress.evaluation.confidence,
+                clarity: progress.evaluation.clarity,
+                technical_depth: progress.evaluation.technical_depth,
+                strengths: progress.evaluation.strengths,
+                improvements: progress.evaluation.improvements,
+              }
+            : undefined,
+        }
+      })
+
+      try {
+        await fetch("/api/interview/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startedAt,
+            endedAt: new Date().toISOString(),
+            config: {
+              role: state.interviewConfig?.role || "Software Engineer",
+              type: state.interviewConfig?.type || "Technical",
+              difficulty: state.interviewConfig?.difficulty || "Medium",
+            },
+            questions: questionsWithAnswers,
+            overallScore,
+          }),
+        })
+        console.log("Interview session saved successfully")
+      } catch (err) {
+        console.error("Failed to save interview:", err)
+      }
+    }
+
+    if (state.status === "ended") {
+      saveInterviewSession()
+    }
+  }, [state.status, state.questions, state.messages, state.questionProgress, state.interviewConfig, startedAt])
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -92,10 +161,12 @@ export default function InterviewSession() {
         
         // Load interview config from sessionStorage
         const configStr = sessionStorage.getItem("interviewConfig")
-        const config = configStr ? JSON.parse(configStr) : { role: "Software Engineer", difficulty: "Medium" }
+        const config = configStr 
+          ? JSON.parse(configStr) 
+          : { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
         
-        // Use fallback questions for Phase 3.3
-        const questions = FALLBACK_QUESTIONS
+        // Select exactly MAX_QUESTIONS questions from the bank
+        const questions = selectQuestions(config)
         
         // Initialize progress tracking
         const progressMap = new Map<string, QuestionProgress>()
@@ -123,8 +194,9 @@ export default function InterviewSession() {
           interviewConfig: config,
         })
       } catch {
-        // Fallback on error
-        const questions = FALLBACK_QUESTIONS
+        // Fallback on error - use default config
+        const defaultConfig = { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
+        const questions = selectQuestions(defaultConfig)
         const progressMap = new Map<string, QuestionProgress>()
         questions.forEach(q => {
           progressMap.set(q.id, {
@@ -147,6 +219,7 @@ export default function InterviewSession() {
             }
           ],
           questionProgress: progressMap,
+          interviewConfig: defaultConfig,
         })
       }
     }
@@ -156,6 +229,12 @@ export default function InterviewSession() {
 
   const handleUserAnswer = async (text: string) => {
     if (!text.trim() || state.status !== "active") return
+
+    // Enforce MAX_QUESTIONS limit
+    if (state.currentQuestionIndex >= MAX_QUESTIONS) {
+      setState((prev) => ({ ...prev, status: "ended" }))
+      return
+    }
 
     const currentQuestion = state.questions[state.currentQuestionIndex]
     const currentProgress = state.questionProgress.get(currentQuestion.id)
@@ -172,7 +251,7 @@ export default function InterviewSession() {
     setInput("")
     setIsAiThinking(true)
 
-    // Call AI to evaluate answer and potentially generate follow-up
+    // Call evaluation API (Algorithmic evaluation - no AI required)
     try {
       const response = await fetch("/api/interview/respond", {
         method: "POST",
@@ -180,9 +259,10 @@ export default function InterviewSession() {
         body: JSON.stringify({
           question: currentQuestion.text,
           answer: text,
-          role: state.interviewConfig?.role || "Software Engineer",
-          difficulty: state.interviewConfig?.difficulty || "Medium",
-          followUpUsed: currentProgress?.followUpUsed || false,
+          role: state.interviewConfig?.role || "general",
+          type: state.interviewConfig?.type || "technical",
+          difficulty: state.interviewConfig?.difficulty || "medium",
+          followUpUsed: true, // Always true to prevent follow-ups
         }),
       })
 
@@ -194,54 +274,35 @@ export default function InterviewSession() {
         const progress = updatedProgress.get(currentQuestion.id)
         if (progress) {
           progress.evaluation = data.evaluation
-          if (data.hasFollowUp) {
-            progress.followUpUsed = true
-          }
         }
 
-        // Add AI response
+        // Always move to next question (NO follow-ups)
         setTimeout(() => {
           setState((prev) => {
-            if (data.hasFollowUp && data.followUp) {
-              // Add follow-up question
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    id: crypto.randomUUID(),
-                    role: "assistant" as const,
-                    content: data.followUp,
-                    kind: "followup",
-                    meta: { type: "follow-up", questionId: currentQuestion.id },
-                  },
-                ],
-                questionProgress: updatedProgress,
-              }
-            } else {
-              // Move to next question
-              const nextIndex = prev.currentQuestionIndex + 1
-              const nextQuestion = prev.questions[nextIndex]
+            const nextIndex = prev.currentQuestionIndex + 1
+            const nextQuestion = prev.questions[nextIndex]
 
-              return {
-                status: nextQuestion ? "active" : "ended",
-                currentQuestionIndex: nextIndex,
-                questions: prev.questions,
-                messages: nextQuestion
-                  ? [
-                      ...prev.messages,
-                      {
-                        id: crypto.randomUUID(),
-                        role: "assistant" as const,
-                        content: nextQuestion.text,
-                        kind: "main",
-                        meta: { type: "question", questionId: nextQuestion.id },
-                      },
-                    ]
-                  : prev.messages,
-                questionProgress: updatedProgress,
-                interviewConfig: prev.interviewConfig,
-              }
+            // Check if we've reached the end
+            const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
+
+            return {
+              status: shouldEnd ? "ended" : "active",
+              currentQuestionIndex: nextIndex,
+              questions: prev.questions,
+              messages: nextQuestion
+                ? [
+                    ...prev.messages,
+                    {
+                      id: crypto.randomUUID(),
+                      role: "assistant" as const,
+                      content: nextQuestion.text,
+                      kind: "main",
+                      meta: { type: "question", questionId: nextQuestion.id },
+                    },
+                  ]
+                : prev.messages,
+              questionProgress: updatedProgress,
+              interviewConfig: prev.interviewConfig,
             }
           })
           setIsAiThinking(false)
@@ -252,9 +313,10 @@ export default function InterviewSession() {
           setState((prev) => {
             const nextIndex = prev.currentQuestionIndex + 1
             const nextQuestion = prev.questions[nextIndex]
+            const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
 
             return {
-              status: nextQuestion ? "active" : "ended",
+              status: shouldEnd ? "ended" : "active",
               currentQuestionIndex: nextIndex,
               questions: prev.questions,
               messages: nextQuestion
@@ -274,9 +336,10 @@ export default function InterviewSession() {
         setState((prev) => {
           const nextIndex = prev.currentQuestionIndex + 1
           const nextQuestion = prev.questions[nextIndex]
+          const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
 
           return {
-            status: nextQuestion ? "active" : "ended",
+            status: shouldEnd ? "ended" : "active",
             currentQuestionIndex: nextIndex,
             questions: prev.questions,
             messages: nextQuestion
@@ -308,12 +371,12 @@ export default function InterviewSession() {
 
   if (state.status === "idle") {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="min-h-screen bg-neutral-900 -m-8 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg font-medium text-neutral-900 mb-2">
+          <div className="text-lg font-medium text-white mb-2">
             Preparing interview...
           </div>
-          <div className="text-sm text-neutral-600">
+          <div className="text-sm text-neutral-400">
             The interviewer will be with you shortly
           </div>
         </div>
@@ -323,126 +386,128 @@ export default function InterviewSession() {
 
   if (state.status === "ended") {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="min-h-screen bg-neutral-900 -m-8 flex items-center justify-center">
         <div className="text-center max-w-md">
-          <div className="text-2xl font-bold text-neutral-900 mb-4">
+          <div className="text-2xl font-bold text-white mb-4">
             Interview Complete! 🎉
           </div>
-          <p className="text-neutral-600 mb-6">
-            Thank you for completing the interview. You answered {state.currentQuestionIndex} questions.
+          <p className="text-neutral-400 mb-6">
+            Thank you for completing the interview. You answered {MAX_QUESTIONS} questions.
           </p>
-          <Button variant="primary" onClick={() => router.push("/dashboard")}>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
             Return to Dashboard
-          </Button>
+          </button>
         </div>
       </div>
     )
   }
 
-  // Check if last AI message was a follow-up
-  const lastAIMessage = [...state.messages].reverse().find(m => m.role === "assistant")
-  const isInFollowUp = lastAIMessage?.kind === "followup"
-
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-neutral-50">
-      {/* Header */}
-      <div className="border-b border-neutral-200 bg-white px-6 py-4 shadow-sm">
-        <div className="flex items-center justify-between max-w-5xl mx-auto">
-          <div>
-            <h1 className="text-xl font-bold text-neutral-900">Live Interview</h1>
-            <p className="text-sm text-neutral-600">
-              Question {state.currentQuestionIndex + 1} of {state.questions.length}
-              {isInFollowUp && <span className="text-blue-600 ml-1">(Follow-up)</span>}
-            </p>
-          </div>
-          <Button variant="outline" onClick={endInterview}>
-            End Interview
-          </Button>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {state.messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+    <div className="min-h-screen bg-neutral-900 -m-8">
+      <div className="flex flex-col h-screen">
+        {/* Header */}
+        <div className="border-b border-neutral-700 bg-neutral-800 px-6 py-4">
+          <div className="flex items-center justify-between max-w-5xl mx-auto">
+            <div>
+              <h1 className="text-xl font-bold text-white">Live Interview</h1>
+              <p className="text-sm text-neutral-400">
+                Question {state.currentQuestionIndex + 1} of {MAX_QUESTIONS}
+              </p>
+            </div>
+            <button
+              onClick={endInterview}
+              className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-2 rounded-lg border border-neutral-600 transition-colors"
             >
-              <div className="flex items-start gap-3 max-w-[80%]">
-                {message.role === "assistant" && (
-                  <div className="flex-shrink-0 w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center">
+              End Interview
+            </button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="max-w-4xl mx-auto space-y-6">
+            {state.messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div className="flex items-start gap-3 max-w-[80%]">
+                  {message.role === "assistant" && (
+                    <div className="flex-shrink-0 w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center border border-neutral-600">
+                      <span className="text-xs font-semibold text-white">AI</span>
+                    </div>
+                  )}
+                  <div>
+                    <div
+                      className={`rounded-2xl px-4 py-3 ${
+                        message.role === "user"
+                          ? "bg-blue-600 text-white rounded-br-md"
+                          : "bg-neutral-800 text-white border border-neutral-700 rounded-tl-md"
+                      }`}
+                    >
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                        {message.content}
+                      </p>
+                    </div>
+                  </div>
+                  {message.role === "user" && (
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                      <span className="text-xs font-semibold text-white">You</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {isAiThinking && (
+              <div className="flex justify-start">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center border border-neutral-600">
                     <span className="text-xs font-semibold text-white">AI</span>
                   </div>
-                )}
-                <div>
-                  {message.kind === "followup" && (
-                    <span className="text-xs text-neutral-500 mb-1 block px-1">
-                      Follow-up Question
-                    </span>
-                  )}
-                  <div
-                    className={`rounded-2xl px-4 py-3 shadow-sm ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white rounded-br-md"
-                        : "bg-white text-neutral-900 border border-neutral-200 rounded-tl-md"
-                    }`}
-                  >
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                      {message.content}
-                    </p>
+                  <div className="flex items-center gap-2 px-4 py-3 bg-neutral-800 rounded-2xl rounded-tl-md border border-neutral-700">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                    </div>
+                    <span className="text-xs text-neutral-400">Interviewer is thinking</span>
                   </div>
                 </div>
-                {message.role === "user" && (
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-semibold text-white">You</span>
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
-          
-          {isAiThinking && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-2 px-4 py-3 bg-neutral-100 rounded-2xl rounded-tl-md">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
-                  <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
-                  <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
-                </div>
-                <span className="text-xs text-neutral-500">Interviewer is thinking</span>
-              </div>
-            </div>
-          )}
+            )}
           
           <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* Input */}
-      <div className="border-t border-neutral-200 bg-white px-6 py-4 shadow-lg">
-        <div className="max-w-4xl mx-auto flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                handleSend()
-              }
-            }}
-            placeholder="Type your answer..."
-            className="flex-1 px-5 py-3 border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            variant="primary"
-            className="px-8"
-          >
-            Send
-          </Button>
+        {/* Input */}
+        <div className="border-t border-neutral-700 bg-neutral-800 px-6 py-4">
+          <div className="max-w-4xl mx-auto flex gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              placeholder="Type your answer..."
+              className="flex-1 px-5 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-neutral-400"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-medium transition-colors"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>

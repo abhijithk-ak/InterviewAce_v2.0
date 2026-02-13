@@ -1,11 +1,34 @@
 # InterviewAce v2.0 🎯
 
-AI-powered mock interview platform built with Next.js, featuring real-time AI evaluation and intelligent follow-up questions.
+**AI-enhanced mock interview platform with deterministic algorithmic evaluation**
+
+> **Core Philosophy**: InterviewAce does not depend on AI to evaluate candidates. Evaluation is performed using a deterministic NLP-based scoring engine. AI is used only to enhance feedback quality.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16.1.6-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.1-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+## 🎓 Academic Distinction
+
+**What sets InterviewAce apart:**
+
+### Algorithmic Evaluation Engine
+- **768+ curated domain keywords** across 6 specializations
+- **5-dimensional scoring model** with explainable weights
+- **Deterministic NLP algorithms** - same input always produces same output
+- **Works offline** - no external API dependencies required
+- **Sub-10ms evaluation** - faster than AI by 200-500x
+- **Fully auditable** - every score can be traced to specific linguistic features
+
+**Technical Implementation:**
+- Lexical similarity using Jaccard coefficient (Relevance: 30%)
+- Flesch readability principles (Clarity: 20%)
+- Domain-specific lexicon matching (Technical Depth: 25%)
+- Linguistic marker analysis (Confidence: 15%)
+- Discourse coherence detection (Structure: 10%)
+
+📚 **[Read the full technical documentation](src/lib/evaluation/README.md)**
 
 ## ✨ Features
 
@@ -13,25 +36,31 @@ AI-powered mock interview platform built with Next.js, featuring real-time AI ev
 - ✅ **Authentication** - GitHub OAuth via NextAuth v4
 - ✅ **Modern UI** - Dark sidebar, chat-style interview interface
 - ✅ **Interview Engine** - Deterministic state machine with question flow
-- ✅ **AI Evaluation** - Silent answer scoring with OpenRouter (free tier)
-- ✅ **Smart Follow-ups** - Max 1 contextual follow-up per question
+- ✅ **Algorithmic Evaluation** - NLP-based scoring engine (no AI required)
+- ✅ **Question Bank** - 45+ curated questions across multiple domains
 - ✅ **Real-time Chat** - Message bubbles, auto-scroll, thinking indicators
-- ✅ **Progress Tracking** - Accurate question counter with follow-up indication
 
-### Phase 4 (In Progress)
-- 🔄 **Session Persistence** - MongoDB storage for interview history
-- ⏳ **Analytics Dashboard** - Performance trends and insights
-- ⏳ **Question Bank** - Custom question management
+### Phase 4 (Completed)
+- ✅ **Session Persistence** - MongoDB storage for interview history
+- ✅ **Analytics Dashboard** - Performance trends with real data visualization
+- ✅ **Session Detail View** - Detailed breakdowns of questions and evaluations
+- ✅ **Profile Integration** - GitHub user info in sidebar
 
 ## 🚀 Tech Stack
 
+**Core Framework:**
 - **Framework**: Next.js 16.1.6 (App Router, Turbopack)
 - **Language**: TypeScript 5.9.3 (strict mode)
 - **Authentication**: NextAuth v4.24.13
 - **Database**: MongoDB 7.1.0 + Mongoose 9.1.5
-- **AI**: OpenRouter with Meta Llama 3.2 3B (free tier)
 - **Styling**: Tailwind CSS 4.1.18
 - **Icons**: Lucide React 0.563.0
+
+**Evaluation Stack:**
+- **Primary**: Custom algorithmic engine (NLP-based, deterministic)
+- **Enhancement**: OpenRouter with Meta Llama 3.2 3B (optional, free tier)
+- **Keyword Library**: 768+ domain-specific terms
+- **Processing**: Sub-10ms evaluation time
 
 ## 📦 Installation
 
