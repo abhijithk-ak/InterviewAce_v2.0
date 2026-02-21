@@ -6,6 +6,7 @@ import { connectDB } from "@/lib/db/mongoose"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
 import { auth } from "@/lib/auth"
+import { getPersonalizedRecommendations, type RecommendationContext } from "@/lib/recommendation-engine"
 
 async function getLearningData(userEmail: string) {
   await connectDB()
@@ -126,19 +127,17 @@ export default async function LearningHubPage() {
 
   const { profile, analytics, totalSessions } = learningData
 
-  // Get personalized resources based on user's weak areas and domains
-  const personalizedResources = LEARNING_RESOURCES.filter(category => {
-    return profile.domains.some((domain: string) => 
-      category.id.includes(domain) || 
-      category.id.includes('fundamentals') ||
-      category.id.includes('behavioral')
-    )
-  }).slice(0, 3)
+  // Use mathematical recommendation engine instead of simple filtering
+  const recommendationContext: RecommendationContext = {
+    profile,
+    analytics,
+    totalSessions
+  }
 
-  // If no personalized match, show general categories
-  const recommendedCategories = personalizedResources.length > 0 
-    ? personalizedResources 
-    : LEARNING_RESOURCES.slice(0, 3)
+  const { recommendations, deficits, targetDifficulty, primaryFocus, isNewUser } = 
+    getPersonalizedRecommendations(recommendationContext)
+
+  const recommendedCategories = recommendations.slice(0, 3)
 
   return (
     <div className="min-h-screen bg-neutral-900 -m-8">
@@ -158,20 +157,32 @@ export default async function LearningHubPage() {
         </div>
 
         {totalSessions === 0 ? (
-          // New User Experience
+          // New User Experience - Personalized based on onboarding
           <div className="space-y-8">
             {/* Welcome Section */}
             <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-xl p-8 border border-neutral-700">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-white mb-2">Start Your Learning Journey</h2>
+                  <h2 className="text-2xl font-bold text-white mb-2">Welcome, {profile.experienceLevel === 'student' ? 'Future Developer!' : profile.experienceLevel === 'fresher' ? 'Rising Developer!' : profile.experienceLevel === 'junior' ? 'Growing Developer!' : 'Seasoned Developer!'}</h2>
                   <p className="text-neutral-300 mb-4">
-                    Build a strong foundation with these carefully curated learning paths designed for {profile.experienceLevel} level interviews.
+                    Based on your interest in <span className="text-blue-400 font-medium">{profile.domains.join(', ')}</span> and your goal to {profile.interviewGoals.includes('prepare-for-job-interviews') ? 'ace job interviews' : profile.interviewGoals.includes('practice-technical-skills') ? 'strengthen technical skills' : profile.interviewGoals.includes('build-confidence') ? 'build confidence' : 'improve your skills'}, we've curated these learning paths specifically for you.
                   </p>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {profile.weakAreas && profile.weakAreas.length > 0 && (
+                      <>
+                        <span className="text-neutral-400 text-sm">Focus areas:</span>
+                        {profile.weakAreas.slice(0, 3).map((area: string) => (
+                          <span key={area} className="bg-orange-500/20 text-orange-300 px-3 py-1 rounded-full text-sm">
+                            {area.replace('-', ' ')}
+                          </span>
+                        ))}
+                      </>
+                    )}
+                  </div>
                   <Link href="/interview/setup">
                     <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
                       <Play className="w-5 h-5" />
-                      Take Practice Interview First
+                      Start Your First Practice Interview
                     </button>
                   </Link>
                 </div>
@@ -183,15 +194,39 @@ export default async function LearningHubPage() {
               </div>
             </div>
 
-            {/* Learning Paths for New Users */}
+            {/* Personalized Learning Paths */}
             <div>
-              <h2 className="text-xl font-semibold text-white mb-6">Recommended Learning Paths</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Mathematical Recommendation Engine</h2>
+              <div className="flex flex-wrap gap-4 mb-6 text-sm">
+                <div className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full">
+                  Primary Focus: {primaryFocus[0]} (deficit: {primaryFocus[1].toFixed(1)}/10)
+                </div>
+                <div className="bg-purple-600/20 text-purple-300 px-3 py-1 rounded-full">
+                  Target Difficulty: {targetDifficulty}
+                </div>
+                <div className="bg-green-600/20 text-green-300 px-3 py-1 rounded-full">
+                  Experience: {profile.experienceLevel} level
+                </div>
+              </div>
               <div className="grid md:grid-cols-3 gap-6">
                 {recommendedCategories.map((category) => (
-                  <div key={category.id} className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
+                  <div key={category.id} className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 hover:border-neutral-600 transition-colors">
                     <div className="mb-4">
-                      <h3 className="text-lg font-semibold text-white mb-2">{category.name}</h3>
-                      <p className="text-neutral-400 text-sm">{category.description}</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-white">{category.name}</h3>
+                        <div className="flex items-center gap-2">
+                          {(category as any).score >= 50 && (
+                            <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-medium">High Match</span>
+                          )}
+                          <span className="bg-neutral-700 text-neutral-300 px-2 py-1 rounded text-xs font-mono">
+                            {(category as any).score?.toFixed(1) || '0.0'}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-neutral-400 text-sm mb-2">{category.description}</p>
+                      {(category as any).matchReason && (
+                        <p className="text-blue-300 text-xs italic">→ {(category as any).matchReason}</p>
+                      )}
                     </div>
                     <div className="space-y-3">
                       {category.resources.slice(0, 3).map((resource) => (
@@ -262,8 +297,78 @@ export default async function LearningHubPage() {
             {/* Personalized Recommendations */}
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Improve Your Weak Areas</h2>
-                <span className="text-sm text-green-400">Personalized for you</span>
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Adaptive Learning Recommendations</h2>
+                  <p className="text-neutral-400 text-sm mt-1">Based on your performance data, we've refined your learning path from your initial onboarding preferences</p>
+                </div>
+                <span className="text-sm text-green-400 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Performance-Based
+                </span>
+              </div>
+
+              {/* Evolution from onboarding */}
+              <div className="bg-neutral-800/50 rounded-lg p-6 border border-neutral-700 mb-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-blue-400" />
+                      Your Initial Focus Areas
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="text-neutral-400 text-sm">From onboarding:</div>
+                      <div className="flex flex-wrap gap-2">
+                        {profile.domains.map((domain: string) => (
+                          <span key={domain} className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-sm">
+                            {domain.replace('-', ' ')}
+                          </span>
+                        ))}
+                      </div>
+                      {profile.weakAreas && profile.weakAreas.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-neutral-400 text-sm">Identified weak areas:</div>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {profile.weakAreas.slice(0, 2).map((area: string) => (
+                              <span key={area} className="bg-orange-500/20 text-orange-300 px-3 py-1 rounded-full text-sm">
+                                {area.replace('-', ' ')}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-green-400" />
+                      Current Performance Focus
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="text-neutral-400 text-sm">After {analytics!.totalSessions} practice sessions:</div>
+                      <div className="space-y-2">
+                        {Object.entries(analytics!.skillBreakdown)
+                          .sort(([,a], [,b]) => a - b)
+                          .slice(0, 2)
+                          .map(([skill, score]) => (
+                          <div key={skill} className="flex items-center justify-between bg-neutral-800 rounded px-3 py-2">
+                            <span className="text-white capitalize">{skill}</span>
+                            <span className={`text-sm font-medium ${
+                              score < 5 ? 'text-red-400' : score < 7 ? 'text-yellow-400' : 'text-green-400'
+                            }`}>
+                              {score}/10 - {score < 5 ? 'Needs focus' : score < 7 ? 'Improving' : 'Strong'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 p-4 bg-blue-600/10 rounded-lg border border-blue-600/20">
+                  <div className="text-blue-300 text-sm mb-1">💡 How we've adapted your learning path:</div>
+                  <div className="text-neutral-300 text-sm">
+                    We started with your onboarding preferences but now prioritize areas where your performance shows the most room for improvement. This ensures you're always working on what matters most for your growth.
+                  </div>
+                </div>
               </div>
               
               {/* Focus on weakest skill */}

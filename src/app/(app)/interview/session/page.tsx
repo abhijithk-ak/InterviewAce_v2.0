@@ -23,7 +23,7 @@ type InterviewMessage = {
   content: string
   kind?: "main" | "followup"
   meta?: {
-    type?: "question" | "follow-up"
+    type?: "question" | "follow-up" | "greeting" | "feedback"
     questionId?: string
   }
 }
@@ -86,9 +86,43 @@ export default function InterviewSession() {
             )
           : 0
 
-      // Build questions array - ONLY main questions from state.questions array
-      // Match them with user answers from messages
-      const questionsWithAnswers = state.questions.map((question) => {
+      // Build questions array from messages (AI-first architecture)
+      // Extract questions and answers from message flow
+      const questionsWithAnswers: Array<{
+        text: string
+        answer: string
+        kind: "main"
+        evaluation?: {
+          score: number
+          confidence: number
+          clarity: number
+          technical_depth: number
+          strengths: string[]
+          improvements: string[]
+        }
+      }> = []
+
+      // Find all question messages and their corresponding answers
+      state.messages.forEach((message, index) => {
+        if (message.role === "assistant" && message.meta?.type === "question") {
+          // Find the next user message as the answer
+          const nextUserMessage = state.messages
+            .slice(index + 1)
+            .find(m => m.role === "user")
+
+          questionsWithAnswers.push({
+            text: message.content,
+            answer: nextUserMessage?.content || "",
+            kind: "main",
+            evaluation: undefined // Evaluations handled by API, scores calculated below
+          })
+        }
+      })
+
+      // Use existing overallScore calculated above
+
+      // If we still have questions in state.questions (fallback mode), use those too
+      const fallbackQuestions = state.questions.map((question) => {
         // Find all messages for this question (AI asks, user responds)
         const questionMsgIndex = state.messages.findIndex(
           (m) => m.role === "assistant" && m.meta?.questionId === question.id && m.kind === "main"
@@ -119,6 +153,9 @@ export default function InterviewSession() {
         }
       })
 
+      // Combine AI questions with any fallback questions
+      const allQuestions = [...questionsWithAnswers, ...fallbackQuestions]
+
       try {
         await fetch("/api/interview/complete", {
           method: "POST",
@@ -131,7 +168,7 @@ export default function InterviewSession() {
               type: state.interviewConfig?.type || "Technical",
               difficulty: state.interviewConfig?.difficulty || "Medium",
             },
-            questions: questionsWithAnswers,
+            questions: allQuestions,
             overallScore,
           }),
         })
@@ -153,22 +190,71 @@ export default function InterviewSession() {
     }
   }, [state.messages.length, isAiThinking])
 
-  // AI starts the interview - load questions and push first one
+  // Start interview with AI-first approach (prevent double initialization)
   useEffect(() => {
+    let hasInitialized = false
+    
     async function startInterview() {
+      if (hasInitialized || state.status !== "idle") return
+      hasInitialized = true
       try {
-        await fetch("/api/interview/start", { method: "POST" })
-        
-        // Load interview config from sessionStorage
+        // Get interview configuration
         const configStr = sessionStorage.getItem("interviewConfig")
         const config = configStr 
           ? JSON.parse(configStr) 
           : { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
         
-        // Select exactly MAX_QUESTIONS questions from the bank
-        const questions = selectQuestions(config)
+        // Call AI-first start endpoint
+        const response = await fetch("/api/interview/start", { 
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(config)
+        })
         
-        // Initialize progress tracking
+        const result = await response.json()
+        
+        if (result.success) {
+          // Initialize with AI greeting and first question
+          const greetingMessage: InterviewMessage = {
+            id: crypto.randomUUID(), 
+            role: "assistant", 
+            content: result.greeting,
+            kind: "main",
+            meta: { type: "greeting" }
+          }
+          
+          const questionMessage: InterviewMessage = {
+            id: crypto.randomUUID(), 
+            role: "assistant", 
+            content: result.question,
+            kind: "main",
+            meta: { type: "question", questionId: "q1" }
+          }
+          
+          // Create initial question progress for AI-first mode
+          const initialProgress = new Map<string, QuestionProgress>()
+          initialProgress.set("q1", {
+            questionId: "q1",
+            followUpUsed: false,
+          })
+          
+          setState({
+            status: "active",
+            currentQuestionIndex: 0,
+            questions: [], // AI manages questions, not pre-loaded
+            messages: [greetingMessage, questionMessage],
+            questionProgress: initialProgress,
+            interviewConfig: config,
+          })
+        } else {
+          throw new Error("Failed to start interview")
+        }
+        
+      } catch (error) {
+        console.error("Interview start failed:", error)
+        // Fallback to original logic
+        const config = { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
+        const questions = selectQuestions(config)
         const progressMap = new Map<string, QuestionProgress>()
         questions.forEach(q => {
           progressMap.set(q.id, {
@@ -177,187 +263,207 @@ export default function InterviewSession() {
           })
         })
         
+        const firstQuestionMessage: InterviewMessage = {
+          id: crypto.randomUUID(), 
+          role: "assistant", 
+          content: questions[0].text,
+          kind: "main",
+          meta: { type: "question", questionId: questions[0].id }
+        }
+        
         setState({
           status: "active",
           currentQuestionIndex: 0,
           questions,
-          messages: [
-            { 
-              id: crypto.randomUUID(), 
-              role: "assistant", 
-              content: questions[0].text,
-              kind: "main",
-              meta: { type: "question", questionId: questions[0].id }
-            }
-          ],
+          messages: [firstQuestionMessage],
           questionProgress: progressMap,
           interviewConfig: config,
-        })
-      } catch {
-        // Fallback on error - use default config
-        const defaultConfig = { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
-        const questions = selectQuestions(defaultConfig)
-        const progressMap = new Map<string, QuestionProgress>()
-        questions.forEach(q => {
-          progressMap.set(q.id, {
-            questionId: q.id,
-            followUpUsed: false,
-          })
-        })
-        
-        setState({
-          status: "active",
-          currentQuestionIndex: 0,
-          questions,
-          messages: [
-            { 
-              id: crypto.randomUUID(), 
-              role: "assistant", 
-              content: questions[0].text,
-              kind: "main",
-              meta: { type: "question", questionId: questions[0].id }
-            }
-          ],
-          questionProgress: progressMap,
-          interviewConfig: defaultConfig,
         })
       }
     }
 
-    startInterview()
-  }, [])
+    if (state.status === "idle") {
+      startInterview()
+    }
+  }, [state.status])
 
   const handleUserAnswer = async (text: string) => {
     if (!text.trim() || state.status !== "active") return
 
-    // Enforce MAX_QUESTIONS limit
-    if (state.currentQuestionIndex >= MAX_QUESTIONS) {
-      setState((prev) => ({ ...prev, status: "ended" }))
-      return
+    // Add user message
+    const userMessage: InterviewMessage = { 
+      id: crypto.randomUUID(), 
+      role: "user", 
+      content: text 
     }
-
-    const currentQuestion = state.questions[state.currentQuestionIndex]
-    const currentProgress = state.questionProgress.get(currentQuestion.id)
-
-    // Add user message first
     setState((prev) => ({
       ...prev,
-      messages: [
-        ...prev.messages,
-        { id: crypto.randomUUID(), role: "user" as const, content: text },
-      ],
+      messages: [...prev.messages, userMessage],
     }))
 
     setInput("")
     setIsAiThinking(true)
 
-    // Call evaluation API (Algorithmic evaluation - no AI required)
+    // Build session history for AI context
+    const sessionHistory = state.messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+
+    // Get current question (last assistant message)
+    const currentQuestionMessage = state.messages
+      .slice()
+      .reverse()
+      .find(m => m.role === "assistant" && m.meta?.type === "question")
+    
+    const currentQuestion = currentQuestionMessage?.content || "Please introduce yourself"
+
     try {
+      // Call hybrid AI + deterministic response endpoint
       const response = await fetch("/api/interview/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: currentQuestion.text,
+          question: currentQuestion,
           answer: text,
-          role: state.interviewConfig?.role || "general",
-          type: state.interviewConfig?.type || "technical",
-          difficulty: state.interviewConfig?.difficulty || "medium",
-          followUpUsed: true, // Always true to prevent follow-ups
+          sessionHistory,
+          config: state.interviewConfig || { role: "general", type: "technical", difficulty: "medium" },
+          questionIndex: state.currentQuestionIndex,
+          usedQuestions: [] // Managed by AI, not tracked client-side
         }),
       })
 
       const data = await response.json()
 
       if (data.success) {
-        // Store evaluation
-        const updatedProgress = new Map(state.questionProgress)
-        const progress = updatedProgress.get(currentQuestion.id)
-        if (progress) {
-          progress.evaluation = data.evaluation
+        // Add feedback message
+        const feedbackMessage: InterviewMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: data.evaluation.feedback,
+          kind: "main",
+          meta: { type: "feedback" }
         }
 
-        // Always move to next question (NO follow-ups)
+        // Store evaluation in question progress
+        const currentQuestionId = currentQuestionMessage?.meta?.questionId || `q${state.currentQuestionIndex + 1}`
+
         setTimeout(() => {
-          setState((prev) => {
-            const nextIndex = prev.currentQuestionIndex + 1
-            const nextQuestion = prev.questions[nextIndex]
-
-            // Check if we've reached the end
-            const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
-
-            return {
-              status: shouldEnd ? "ended" : "active",
-              currentQuestionIndex: nextIndex,
-              questions: prev.questions,
-              messages: nextQuestion
-                ? [
-                    ...prev.messages,
-                    {
-                      id: crypto.randomUUID(),
-                      role: "assistant" as const,
-                      content: nextQuestion.text,
-                      kind: "main",
-                      meta: { type: "question", questionId: nextQuestion.id },
-                    },
-                  ]
-                : prev.messages,
-              questionProgress: updatedProgress,
-              interviewConfig: prev.interviewConfig,
+          if (data.done || data.nextQuestion === null) {
+            // Interview is complete, update progress with evaluation
+            setState((prev) => {
+              const newProgress = new Map(prev.questionProgress)
+              if (newProgress.has(currentQuestionId)) {
+                newProgress.set(currentQuestionId, {
+                  ...newProgress.get(currentQuestionId)!,
+                  evaluation: {
+                    score: data.evaluation.score,
+                    confidence: data.evaluation.breakdown.confidence,
+                    clarity: data.evaluation.breakdown.clarity,
+                    technical_depth: data.evaluation.breakdown.technical,
+                    strengths: [],
+                    improvements: [],
+                    should_follow_up: false,
+                    follow_up_focus: null
+                  }
+                })
+              }
+              
+              return {
+                ...prev,
+                status: "ended",
+                messages: [...prev.messages, feedbackMessage],
+                currentQuestionIndex: prev.currentQuestionIndex + 1,
+                questionProgress: newProgress
+              }
+            })
+          } else {
+            // Continue with next question, update progress with evaluation
+            const nextQuestionMessage: InterviewMessage = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: data.nextQuestion,
+              kind: "main",
+              meta: { type: "question", questionId: `q${state.currentQuestionIndex + 2}` }
             }
-          })
-          setIsAiThinking(false)
-        }, 800)
-      } else {
-        // Fallback: just move to next question
-        setTimeout(() => {
-          setState((prev) => {
-            const nextIndex = prev.currentQuestionIndex + 1
-            const nextQuestion = prev.questions[nextIndex]
-            const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
 
-            return {
-              status: shouldEnd ? "ended" : "active",
-              currentQuestionIndex: nextIndex,
-              questions: prev.questions,
-              messages: nextQuestion
-                ? [...prev.messages, { id: crypto.randomUUID(), role: "assistant" as const, content: nextQuestion.text, kind: "main" }]
-                : prev.messages,
-              questionProgress: prev.questionProgress,
-              interviewConfig: prev.interviewConfig,
-            }
-          })
-          setIsAiThinking(false)
-        }, 800)
-      }
-    } catch (error) {
-      console.error("Error processing answer:", error)
-      // Fallback: move to next question
-      setTimeout(() => {
-        setState((prev) => {
-          const nextIndex = prev.currentQuestionIndex + 1
-          const nextQuestion = prev.questions[nextIndex]
-          const shouldEnd = nextIndex >= MAX_QUESTIONS || !nextQuestion
-
-          return {
-            status: shouldEnd ? "ended" : "active",
-            currentQuestionIndex: nextIndex,
-            questions: prev.questions,
-            messages: nextQuestion
-              ? [...prev.messages, { id: crypto.randomUUID(), role: "assistant" as const, content: nextQuestion.text, kind: "main" }]
-              : prev.messages,
-            questionProgress: prev.questionProgress,
-            interviewConfig: prev.interviewConfig,
+            setState((prev) => {
+              const newProgress = new Map(prev.questionProgress)
+              if (newProgress.has(currentQuestionId)) {
+                newProgress.set(currentQuestionId, {
+                  ...newProgress.get(currentQuestionId)!,
+                  evaluation: {
+                    score: data.evaluation.score,
+                    confidence: data.evaluation.breakdown.confidence,
+                    clarity: data.evaluation.breakdown.clarity,
+                    technical_depth: data.evaluation.breakdown.technical,
+                    strengths: [],
+                    improvements: [],
+                    should_follow_up: false,
+                    follow_up_focus: null
+                  }
+                })
+              }
+              
+              // Add progress entry for next question
+              const nextQuestionId = `q${prev.currentQuestionIndex + 2}`
+              newProgress.set(nextQuestionId, {
+                questionId: nextQuestionId,
+                followUpUsed: false,
+              })
+              
+              return {
+                ...prev,
+                messages: [...prev.messages, feedbackMessage, nextQuestionMessage],
+                currentQuestionIndex: prev.currentQuestionIndex + 1,
+                questionProgress: newProgress
+              }
+            })
           }
-        })
+          setIsAiThinking(false)
+        }, 800)
+
+      } else {
+        throw new Error(data.error || "Failed to process response")
+      }
+
+    } catch (error) {
+      console.error("Answer processing error:", error)
+      
+      // Fallback response
+      setTimeout(() => {
+        const fallbackMessage: InterviewMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Thank you for your responses. The interview has been completed.",
+          kind: "main",
+          meta: { type: "feedback" }
+        }
+        
+        setState((prev) => ({
+          ...prev,
+          status: "ended",
+          messages: [...prev.messages, fallbackMessage],
+        }))
         setIsAiThinking(false)
       }, 800)
     }
   }
 
   const endInterview = () => {
+    // Add thank you message from Zen AI
+    const thankYouMessage: InterviewMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "Thank you for completing this interview session! I'm Zen AI, your InterviewAce assistant, and it was great working with you. Your responses have been recorded and you can view your performance in the dashboard. Best of luck with your career journey!",
+      kind: "main",
+      meta: { type: "feedback" }
+    }
+    
     setState((prev) => ({
       ...prev,
       status: "ended",
+      messages: [...prev.messages, thankYouMessage]
     }))
   }
 
@@ -391,8 +497,11 @@ export default function InterviewSession() {
           <div className="text-2xl font-bold text-white mb-4">
             Interview Complete! 🎉
           </div>
-          <p className="text-neutral-400 mb-6">
-            Thank you for completing the interview. You answered {MAX_QUESTIONS} questions.
+          <p className="text-neutral-400 mb-2">
+            Thank you for completing your interview session with Zen AI!
+          </p>
+          <p className="text-sm text-neutral-500 mb-6">
+            Your responses have been saved and you can review your performance analytics in the dashboard.
           </p>
           <button
             onClick={() => router.push("/dashboard")}
@@ -409,17 +518,17 @@ export default function InterviewSession() {
     <div className="min-h-screen bg-neutral-900 -m-8">
       <div className="flex flex-col h-screen">
         {/* Header */}
-        <div className="border-b border-neutral-700 bg-neutral-800 px-6 py-4">
-          <div className="flex items-center justify-between max-w-5xl mx-auto">
-            <div>
-              <h1 className="text-xl font-bold text-white">Live Interview</h1>
-              <p className="text-sm text-neutral-400">
+        <div className="flex-shrink-0 border-b border-neutral-700 bg-neutral-800 px-4 py-3">
+          <div className="flex items-center justify-between max-w-full">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg font-bold text-white truncate">Live Interview with Zen AI</h1>
+              <p className="text-xs text-neutral-400">
                 Question {state.currentQuestionIndex + 1} of {MAX_QUESTIONS}
               </p>
             </div>
             <button
               onClick={endInterview}
-              className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-2 rounded-lg border border-neutral-600 transition-colors"
+              className="flex-shrink-0 ml-4 bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-1.5 rounded-lg border border-neutral-600 transition-colors text-sm"
             >
               End Interview
             </button>
@@ -436,8 +545,8 @@ export default function InterviewSession() {
               >
                 <div className="flex items-start gap-3 max-w-[80%]">
                   {message.role === "assistant" && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center border border-neutral-600">
-                      <span className="text-xs font-semibold text-white">AI</span>
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center border border-blue-500">
+                      <span className="text-xs font-semibold text-white">Zen</span>
                     </div>
                   )}
                   <div>
@@ -479,10 +588,10 @@ export default function InterviewSession() {
                 </div>
               </div>
             )}
-          
-          <div ref={bottomRef} />
+            
+            <div ref={bottomRef} />
+          </div>
         </div>
-      </div>
 
         {/* Input */}
         <div className="border-t border-neutral-700 bg-neutral-800 px-6 py-4">

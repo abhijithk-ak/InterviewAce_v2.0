@@ -1,25 +1,66 @@
-import { NextResponse } from "next/server"
+/**
+ * Interview Start API Route - AI-First Architecture
+ * Handles session initialization with AI greeting and first question
+ */
 
-const fallbackQuestions = [
-  "Hello! I'll be conducting your interview today. Let's begin. Can you briefly introduce yourself and tell me about your background?",
-  "Welcome! I'm excited to learn more about you. To start, could you walk me through your professional experience?",
-  "Hi there! Let's get started with your interview. First, I'd like to hear about your career journey so far.",
-]
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { startInterview, validateConfig } from "@/lib/interview/start"
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
-    // Phase 2: Simple fallback to Question Bank
-    // Later phases will integrate actual AI providers
-    const randomQuestion = fallbackQuestions[Math.floor(Math.random() * fallbackQuestions.length)]
-    
+    // Check authentication
+    const session = await auth()
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: "Authentication required", success: false },
+        { status: 401 }
+      )
+    }
+
+    const body = await req.json()
+    const { role, type, difficulty } = body
+
+    // Validate configuration
+    const config = { role, type, difficulty }
+    if (!validateConfig(config)) {
+      return NextResponse.json(
+        { error: "Invalid interview configuration", success: false },
+        { status: 400 }
+      )
+    }
+
+    // Start interview with AI-first approach
+    const userName = session.user.name || session.user.email?.split('@')[0] || undefined
+    const result = await startInterview(config, userName)
+
     return NextResponse.json({
-      message: randomQuestion,
       success: true,
+      greeting: result.greeting,
+      question: result.question,
+      source: result.source,
+      sessionId: `session_${Date.now()}`,
+      config,
+      ...(process.env.NODE_ENV === 'development' && result.debug && {
+        debug: result.debug
+      })
     })
+
   } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to start interview", success: false },
-      { status: 500 }
-    )
+    console.error("Interview start error:", error)
+    
+    // Return graceful fallback
+    return NextResponse.json({
+      success: true,
+      greeting: "Welcome to InterviewAce. Let's begin your interview.",
+      question: "Tell me about yourself and your experience in software development.",
+      source: "fallback",
+      sessionId: `session_${Date.now()}`,
+      config: {
+        role: "general",
+        type: "behavioral", 
+        difficulty: "medium"
+      }
+    })
   }
 }

@@ -128,19 +128,41 @@ async function getAnalyticsData(userEmail: string) {
       score: session.overallScore || 0
     }))
 
-    // Session type breakdown
+    // Session type breakdown - normalize case and add logging
+    console.log("Sample session:", sessions[0])
     const sessionsByType = {
-      technical: sessions.filter(s => s.config.type === 'technical').length,
-      behavioral: sessions.filter(s => s.config.type === 'behavioral').length,
-      'system-design': sessions.filter(s => s.config.type === 'system-design').length
+      technical: 0,
+      behavioral: 0,
+      'system-design': 0,
+      hr: 0
     }
 
-    // Difficulty breakdown
     const difficultyBreakdown = {
-      easy: sessions.filter(s => s.config.difficulty === 'easy').length,
-      medium: sessions.filter(s => s.config.difficulty === 'medium').length,
-      hard: sessions.filter(s => s.config.difficulty === 'hard').length
+      easy: 0,
+      medium: 0,
+      hard: 0
     }
+
+    // Safely aggregate with normalization
+    sessions.forEach(session => {
+      if (session.config) {
+        // Normalize type (handle both "Technical" and "technical")
+        const type = session.config.type?.toLowerCase().trim()
+        if (type === 'technical') sessionsByType.technical++
+        else if (type === 'behavioral') sessionsByType.behavioral++
+        else if (type === 'system-design' || type === 'systemdesign') sessionsByType['system-design']++
+        else if (type === 'hr') sessionsByType.hr++
+
+        // Normalize difficulty (handle both "Medium" and "medium")
+        const difficulty = session.config.difficulty?.toLowerCase().trim()
+        if (difficulty === 'easy') difficultyBreakdown.easy++
+        else if (difficulty === 'medium') difficultyBreakdown.medium++
+        else if (difficulty === 'hard') difficultyBreakdown.hard++
+      }
+    })
+
+    console.log("Session types:", sessionsByType)
+    console.log("Difficulty breakdown:", difficultyBreakdown)
 
     // Format recent sessions
     const formattedRecentSessions = sessions.slice(0, 5).map(session => ({

@@ -86,8 +86,10 @@ export default function GitHubWrapPage() {
                 throw new Error(data.error || "Failed to fetch stats")
             }
             const data = await response.json()
+            console.log("GitHub Stats Data:", data) // Debug log
             setStats(data)
         } catch (err) {
+            console.error("GitHub Stats Error:", err) // Debug log
             setError(err instanceof Error ? err.message : "An error occurred")
         } finally {
             setLoading(false)
@@ -173,7 +175,7 @@ export default function GitHubWrapPage() {
     if (!stats) return null
 
     return (
-        <div className="min-h-screen bg-neutral-900 -m-8 py-12">
+        <div className="min-h-screen bg-neutral-900 text-white -m-8 py-12">
             <div className="max-w-6xl mx-auto px-6 space-y-8">
                 {/* Header */}
                 <header className="flex items-center justify-between mb-10">
@@ -206,46 +208,46 @@ export default function GitHubWrapPage() {
 
                 {/* Quick Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardContent className="text-center">
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="text-center p-6">
                             <Code2 className="w-6 h-6 mx-auto mb-2 text-blue-400" />
-                            <p className="text-2xl font-bold text-white">{stats.stats.totalRepos}</p>
+                            <p className="text-2xl font-bold text-white">{stats.stats.totalRepos || 0}</p>
                             <p className="text-sm text-neutral-400">Repositories</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardContent className="text-center">
+                        </div>
+                    </div>
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="text-center p-6">
                             <Star className="w-6 h-6 mx-auto mb-2 text-yellow-400" />
-                            <p className="text-2xl font-bold text-white">{stats.stats.totalStars}</p>
+                            <p className="text-2xl font-bold text-white">{stats.stats.totalStars || 0}</p>
                             <p className="text-sm text-neutral-400">Total Stars</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardContent className="text-center">
+                        </div>
+                    </div>
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="text-center p-6">
                             <GitFork className="w-6 h-6 mx-auto mb-2 text-purple-400" />
-                            <p className="text-2xl font-bold text-white">{stats.stats.totalForks}</p>
+                            <p className="text-2xl font-bold text-white">{stats.stats.totalForks || 0}</p>
                             <p className="text-sm text-neutral-400">Total Forks</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardContent className="text-center">
+                        </div>
+                    </div>
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="text-center p-6">
                             <TrendingUp className="w-6 h-6 mx-auto mb-2 text-green-400" />
-                            <p className="text-2xl font-bold text-white">{stats.stats.recentlyActive}</p>
+                            <p className="text-2xl font-bold text-white">{stats.stats.recentlyActive || 0}</p>
                             <p className="text-sm text-neutral-400">Active (30d)</p>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-8">
                     {/* Languages */}
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardHeader>
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="px-6 py-4">
                             <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
                                 <Code2 className="w-5 h-5" />
                                 Tech Stack
                             </h2>
-                        </CardHeader>
-                        <CardContent>
+                        </div>
+                        <div className="px-6 py-4">
                             <div className="space-y-4">
                                 {stats.languages.map((lang) => (
                                     <div key={lang.language} className="space-y-1">
@@ -273,18 +275,18 @@ export default function GitHubWrapPage() {
                                     </div>
                                 ))}
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* Top Repos */}
-                    <Card className="border-neutral-700 bg-neutral-800">
-                        <CardHeader>
+                    <div className="bg-neutral-800 border border-neutral-700 rounded-lg shadow-sm">
+                        <div className="px-6 py-4">
                             <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
                                 <Star className="w-5 h-5" />
                                 Top Repositories
                             </h2>
-                        </CardHeader>
-                        <CardContent>
+                        </div>
+                        <div className="px-6 py-4">
                             <div className="space-y-4">
                                 {stats.topRepos.slice(0, 5).map((repo) => (
                                     <a
@@ -331,8 +333,8 @@ export default function GitHubWrapPage() {
                                     </a>
                                 ))}
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Refresh Button */}
