@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui"
 import { selectQuestions, MAX_QUESTIONS } from "@/lib/questions/bank"
 import type { Question } from "@/lib/questions/bank"
+import { Mic, MicOff, Video, VideoOff, Camera, Volume2 } from "lucide-react"
 
 type EvaluationResult = {
   score: number
@@ -62,10 +63,151 @@ export default function InterviewSession() {
   const [startedAt] = useState(new Date().toISOString())
   const bottomRef = useRef<HTMLDivElement>(null)
   const hasSavedRef = useRef(false)
+  const [isListening, setIsListening] = useState(false)
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true)
+  const recognitionRef = useRef<any>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const speechSynthesisRef = useRef<SpeechSynthesis | null>(null)
+  const speechQueueRef = useRef<string[]>([])
 
   // Prevent hydration issues
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Initialize speech synthesis
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      speechSynthesisRef.current = window.speechSynthesis
+    }
+  }, [])
+
+  // Function to speak AI responses with queueing
+  const speakText = useCallback((text: string) => {
+    if (!speechSynthesisRef.current || !isVoiceEnabled) return
+    
+    // Add to queue
+    speechQueueRef.current.push(text)
+    
+    // Process queue if not already speaking
+    if (!isSpeaking) {
+      processNextSpeech()
+    }
+  }, [isSpeaking, isVoiceEnabled])
+
+  // Process next item in speech queue
+  const processNextSpeech = useCallback(() => {
+    if (!speechSynthesisRef.current || speechQueueRef.current.length === 0) return
+    
+    const text = speechQueueRef.current.shift()
+    if (!text) return
+    
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+    utterance.volume = 1.0
+    
+    // Try to use a pleasant female voice
+    const voices = speechSynthesisRef.current.getVoices()
+    const femaleVoice = voices.find(voice => 
+      voice.name.includes('female') || 
+      voice.name.includes('Female') ||
+      voice.name.includes('Samantha') ||
+      voice.name.includes('Karen') ||
+      voice.name.includes('Zira')
+    )
+    if (femaleVoice) {
+      utterance.voice = femaleVoice
+    }
+    
+    utterance.onstart = () => setIsSpeaking(true)
+    utterance.onend = () => {
+      setIsSpeaking(false)
+      // Process next item in queue after a short pause
+      setTimeout(() => {
+        processNextSpeech()
+      }, 500)
+    }
+    utterance.onerror = () => {
+      setIsSpeaking(false)
+      processNextSpeech()
+    }
+    
+    speechSynthesisRef.current.speak(utterance)
+  }, [])
+
+  // Function to stop speaking and clear queue
+  const stopSpeaking = useCallback(() => {
+    if (speechSynthesisRef.current) {
+      speechSynthesisRef.current.cancel()
+      speechQueueRef.current = []
+      setIsSpeaking(false)
+    }
+  }, [])
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { webkitSpeechRecognition, SpeechRecognition } = window as any
+      if (webkitSpeechRecognition || SpeechRecognition) {
+        const SpeechRecognitionConstructor = webkitSpeechRecognition || SpeechRecognition
+        recognitionRef.current = new SpeechRecognitionConstructor()
+        recognitionRef.current.continuous = true
+        recognitionRef.current.interimResults = true
+        recognitionRef.current.lang = 'en-US'
+        
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = Array.from(event.results)
+            .map((result: any) => result[0])
+            .map((result: any) => result.transcript)
+            .join('')
+          setInput(transcript)
+        }
+        
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error)
+          setIsListening(false)
+        }
+        
+        recognitionRef.current.onend = () => {
+          setIsListening(false)
+        }
+      }
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+    }
+  }, [])
+
+  const toggleListening = useCallback(() => {
+    if (!recognitionRef.current) return
+    
+    if (isListening) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    } else {
+      recognitionRef.current.start()
+      setIsListening(true)
+    }
+  }, [isListening])
+
+  const toggleVideo = useCallback(() => {
+    setIsVideoEnabled(prev => !prev)
+  }, [])
+
+  const toggleVoice = useCallback(() => {
+    setIsVoiceEnabled(prev => {
+      const newValue = !prev
+      if (!newValue) {
+        stopSpeaking() // Stop any ongoing speech when disabled
+      }
+      return newValue
+    })
   }, [])
 
   // Save interview session when it ends
@@ -197,6 +339,9 @@ export default function InterviewSession() {
     async function startInterview() {
       if (hasInitialized || state.status !== "idle") return
       hasInitialized = true
+      
+      setIsAiThinking(true) // Show loading state immediately
+      
       try {
         // Get interview configuration
         const configStr = sessionStorage.getItem("interviewConfig")
@@ -246,13 +391,21 @@ export default function InterviewSession() {
             questionProgress: initialProgress,
             interviewConfig: config,
           })
+          
+          setIsAiThinking(false)
+          
+          // Speak the greeting and first question (queued automatically)
+          speakText(result.greeting)
+          speakText(result.question)
         } else {
           throw new Error("Failed to start interview")
         }
         
       } catch (error) {
         console.error("Interview start failed:", error)
-        // Fallback to original logic
+        setIsAiThinking(false)
+        
+        // Fallback to original logic only on complete failure
         const config = { role: "Software Engineer", type: "Technical", difficulty: "Medium" }
         const questions = selectQuestions(config)
         const progressMap = new Map<string, QuestionProgress>()
@@ -285,7 +438,7 @@ export default function InterviewSession() {
     if (state.status === "idle") {
       startInterview()
     }
-  }, [state.status])
+  }, [state.status, speakText])
 
   const handleUserAnswer = async (text: string) => {
     if (!text.trim() || state.status !== "active") return
@@ -377,6 +530,8 @@ export default function InterviewSession() {
                 questionProgress: newProgress
               }
             })
+            // Speak the feedback
+            speakText(data.evaluation.feedback)
           } else {
             // Continue with next question, update progress with evaluation
             const nextQuestionMessage: InterviewMessage = {
@@ -419,6 +574,9 @@ export default function InterviewSession() {
                 questionProgress: newProgress
               }
             })
+            // Speak the feedback and next question (queued automatically)
+            speakText(data.evaluation.feedback)
+            speakText(data.nextQuestion)
           }
           setIsAiThinking(false)
         }, 800)
@@ -477,7 +635,7 @@ export default function InterviewSession() {
 
   if (state.status === "idle") {
     return (
-      <div className="min-h-screen bg-neutral-900 -m-8 flex items-center justify-center">
+      <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
         <div className="text-center">
           <div className="text-lg font-medium text-white mb-2">
             Preparing interview...
@@ -492,7 +650,7 @@ export default function InterviewSession() {
 
   if (state.status === "ended") {
     return (
-      <div className="min-h-screen bg-neutral-900 -m-8 flex items-center justify-center">
+      <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
         <div className="text-center max-w-md">
           <div className="text-2xl font-bold text-white mb-4">
             Interview Complete! 🎉
@@ -515,107 +673,228 @@ export default function InterviewSession() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 -m-8">
+    <div className="min-h-screen bg-neutral-900">
       <div className="flex flex-col h-screen">
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-neutral-700 bg-neutral-800 px-4 py-3">
+        <div className="flex-shrink-0 border-b border-neutral-700 bg-neutral-800 px-6 py-4">
           <div className="flex items-center justify-between max-w-full">
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-white truncate">Live Interview with Zen AI</h1>
-              <p className="text-xs text-neutral-400">
-                Question {state.currentQuestionIndex + 1} of {MAX_QUESTIONS}
+              <h1 className="text-xl font-bold text-white truncate">Live Interview Session</h1>
+              <p className="text-sm text-neutral-400">
+                Question {state.currentQuestionIndex + 1} of {MAX_QUESTIONS} • Zen AI Interviewer
               </p>
             </div>
-            <button
-              onClick={endInterview}
-              className="flex-shrink-0 ml-4 bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-1.5 rounded-lg border border-neutral-600 transition-colors text-sm"
-            >
-              End Interview
-            </button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-8">
-          <div className="max-w-4xl mx-auto space-y-6">
-            {state.messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleVideo}
+                className={`p-2 rounded-lg border transition-colors ${
+                  isVideoEnabled 
+                    ? 'bg-green-600 hover:bg-green-700 border-green-500 text-white'
+                    : 'bg-neutral-700 hover:bg-neutral-600 border-neutral-600 text-neutral-300'
+                }`}
               >
-                <div className="flex items-start gap-3 max-w-[80%]">
-                  {message.role === "assistant" && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center border border-blue-500">
-                      <span className="text-xs font-semibold text-white">Zen</span>
-                    </div>
-                  )}
-                  <div>
-                    <div
-                      className={`rounded-2xl px-4 py-3 ${
-                        message.role === "user"
-                          ? "bg-blue-600 text-white rounded-br-md"
-                          : "bg-neutral-800 text-white border border-neutral-700 rounded-tl-md"
-                      }`}
-                    >
-                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                        {message.content}
-                      </p>
-                    </div>
-                  </div>
-                  {message.role === "user" && (
-                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-xs font-semibold text-white">You</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            
-            {isAiThinking && (
-              <div className="flex justify-start">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center border border-neutral-600">
-                    <span className="text-xs font-semibold text-white">AI</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-4 py-3 bg-neutral-800 rounded-2xl rounded-tl-md border border-neutral-700">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
-                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
-                      <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
-                    </div>
-                    <span className="text-xs text-neutral-400">Interviewer is thinking</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <div ref={bottomRef} />
+                {isVideoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={endInterview}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              >
+                End Interview
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Input */}
-        <div className="border-t border-neutral-700 bg-neutral-800 px-6 py-4">
-          <div className="max-w-4xl mx-auto flex gap-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend()
-                }
-              }}
-              placeholder="Type your answer..."
-              className="flex-1 px-5 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-neutral-400"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-medium transition-colors"
-            >
-              Send
-            </button>
+        {/* Main Interview Area */}
+        <div className="flex-1 flex">
+          {/* Left Panel - Video & Controls */}
+          <div className="w-80 border-r border-neutral-700 bg-neutral-800 p-4">
+            {/* Camera View */}
+            <div className="mb-4">
+              <div className="aspect-[4/3] bg-neutral-900 rounded-lg border-2 border-dashed border-neutral-600 flex items-center justify-center relative">
+                {isVideoEnabled ? (
+                  <div className="text-center">
+                    <Camera className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
+                    <p className="text-sm text-neutral-400">Camera Preview</p>
+                    <p className="text-xs text-neutral-500">Your video feed will appear here</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <VideoOff className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
+                    <p className="text-sm text-neutral-400">Camera Off</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Interview Progress */}
+            <div className="mb-4 p-3 bg-neutral-900 rounded-lg">
+              <h3 className="text-sm font-medium text-white mb-2">Progress</h3>
+              <div className="flex justify-between text-sm text-neutral-400 mb-1">
+                <span>Question {state.currentQuestionIndex + 1}</span>
+                <span>{MAX_QUESTIONS} Total</span>
+              </div>
+              <div className="w-full bg-neutral-700 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${((state.currentQuestionIndex + 1) / MAX_QUESTIONS) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            {/* Interview Tips */}
+            <div className="p-3 bg-neutral-900 rounded-lg">
+              <h3 className="text-sm font-medium text-white mb-2">💡 Tips</h3>
+              <ul className="text-xs text-neutral-400 space-y-1">
+                <li>• Speak clearly and at a steady pace</li>
+                <li>• Use the STAR method for behavioral questions</li>
+                <li>• Think aloud to show your reasoning</li>
+                <li>• Ask clarifying questions when needed</li>
+              </ul>
+            </div>
+          </div>
+          
+          {/* Right Panel - Conversation */}
+          <div className="flex-1 flex flex-col">
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {state.messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className="flex items-start gap-3 max-w-[85%]">
+                      {message.role === "assistant" && (
+                        <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center border-2 border-blue-500 shadow-lg">
+                          <span className="text-sm font-bold text-white">Zen</span>
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        {message.role === "assistant" && (
+                          <span className="text-xs text-neutral-400 mb-1 ml-1">
+                            {message.meta?.type === 'question' ? '🎯 Interview Question' : 
+                             message.meta?.type === 'feedback' ? '📝 Feedback' : 'Zen AI'}
+                          </span>
+                        )}
+                        <div
+                          className={`rounded-2xl px-5 py-4 shadow-lg ${
+                            message.role === "user"
+                              ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-md"
+                              : message.meta?.type === 'feedback'
+                                ? "bg-gradient-to-br from-green-800 to-green-900 text-white border border-green-700 rounded-tl-md"
+                                : "bg-neutral-800 text-white border border-neutral-700 rounded-tl-md"
+                          }`}
+                        >
+                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+                        </div>
+                      </div>
+                      {message.role === "user" && (
+                        <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 rounded-full flex items-center justify-center border-2 border-gray-500">
+                          <span className="text-sm font-bold text-white">You</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {isAiThinking && (
+                  <div className="flex justify-start">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-10 h-10 bg-neutral-700 rounded-full flex items-center justify-center border-2 border-neutral-600 animate-pulse">
+                        <Volume2 className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex items-center gap-3 px-5 py-4 bg-neutral-800 rounded-2xl rounded-tl-md border border-neutral-700">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                        </div>
+                        <span className="text-sm text-neutral-300">Zen AI is analyzing your response...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div ref={bottomRef} />
+              </div>
+            </div>
+
+            {/* Input Area */}
+            <div className="border-t border-neutral-700 bg-neutral-800 px-6 py-4">
+              <div className="max-w-4xl mx-auto">
+                <div className="flex gap-3 mb-3">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSend()
+                      }
+                    }}
+                    placeholder="Type your answer here... or use the microphone to speak"
+                    rows={3}
+                    className="flex-1 px-5 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-neutral-400 resize-none"
+                  />
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={toggleVoice}
+                      className={`p-3 rounded-xl border transition-colors ${
+                        isVoiceEnabled
+                          ? 'bg-purple-600 hover:bg-purple-700 border-purple-500 text-white'
+                          : 'bg-neutral-600 hover:bg-neutral-700 border-neutral-500 text-neutral-300'
+                      }`}
+                      title={isVoiceEnabled ? 'Disable AI Voice' : 'Enable AI Voice'}
+                    >
+                      <Volume2 className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={toggleListening}
+                      disabled={!recognitionRef.current}
+                      className={`p-3 rounded-xl border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isListening 
+                          ? 'bg-red-600 hover:bg-red-700 border-red-500 text-white animate-pulse'
+                          : 'bg-green-600 hover:bg-green-700 border-green-500 text-white'
+                      }`}
+                      title={isListening ? 'Stop recording' : 'Start voice input'}
+                    >
+                      {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl font-medium transition-colors"
+                      title="Send answer"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+                
+                {isListening && (
+                  <div className="flex items-center gap-2 text-sm text-green-400">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+                    <span>Listening... Speak clearly into your microphone</span>
+                  </div>
+                )}
+                
+                {isSpeaking && (
+                  <div className="flex items-center gap-2 text-sm text-purple-400">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-ping"></div>
+                    <span>Zen AI is speaking...</span>
+                  </div>
+                )}
+                
+                {!recognitionRef.current && (
+                  <div className="text-xs text-neutral-500">
+                    💡 Voice input not supported in this browser. Try Chrome or Edge for the best experience.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

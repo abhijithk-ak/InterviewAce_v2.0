@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
+import { ScoreTrendChart, SkillBreakdownChart, SessionTypeChart } from "@/components/charts"
 
 type AnalyticsData = {
   totalSessions: number
@@ -90,17 +91,22 @@ async function getAnalyticsData(userEmail: string) {
     sessions.forEach(session => {
       session.questions?.forEach((question: any) => {
         if (question.evaluation) {
-          if (question.evaluation.technical_depth) {
+          if (question.evaluation.technical_depth !== undefined) {
             skillData.technical.push(question.evaluation.technical_depth)
           }
-          if (question.evaluation.confidence) {
+          if (question.evaluation.confidence !== undefined) {
             skillData.confidence.push(question.evaluation.confidence)
           }
-          if (question.evaluation.clarity) {
+          if (question.evaluation.clarity !== undefined) {
             skillData.clarity.push(question.evaluation.clarity)
           }
-          if (question.evaluation.score) {
-            skillData.communication.push(question.evaluation.score)
+          // Communication is calculated as average of clarity and confidence
+          if (question.evaluation.clarity !== undefined && question.evaluation.confidence !== undefined) {
+            skillData.communication.push((question.evaluation.clarity + question.evaluation.confidence) / 2)
+          } else if (question.evaluation.clarity !== undefined) {
+            skillData.communication.push(question.evaluation.clarity)
+          } else if (question.evaluation.confidence !== undefined) {
+            skillData.communication.push(question.evaluation.confidence)
           }
         }
       })
@@ -123,8 +129,8 @@ async function getAnalyticsData(userEmail: string) {
 
     // Calculate score trend over time (last 10 sessions)
     const recentSessions = sessions.slice(0, 10).reverse()
-    const scoreTrend = recentSessions.map((session, index) => ({
-      date: `Session ${index + 1}`,
+    const scoreTrend = recentSessions.map((session) => ({
+      date: session.startedAt.toISOString(),
       score: session.overallScore || 0
     }))
 
@@ -206,7 +212,7 @@ export default async function AnalyticsPage() {
   
   if (!analyticsData) {
     return (
-      <div className="min-h-screen bg-neutral-900 -m-8 flex items-center justify-center">
+      <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
         <p className="text-neutral-400">Failed to load analytics data</p>
       </div>
     )
@@ -215,7 +221,7 @@ export default async function AnalyticsPage() {
   const { profile, analytics, totalSessions } = analyticsData
 
   return (
-    <div className="min-h-screen bg-neutral-900 -m-8">
+    <div className="min-h-screen bg-neutral-900">
       <div className="max-w-7xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
@@ -323,116 +329,164 @@ export default async function AnalyticsPage() {
 
             {/* Skills Breakdown */}
             <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-              <h2 className="text-xl font-semibold text-white mb-6">Skill Performance</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => (
-                  <div key={skill} className="text-center">
-                    <div className={`text-3xl font-bold mb-2 ${
-                      score >= 8 ? 'text-green-400' :
-                      score >= 6 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {score}/10
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Skill Performance</h2>
+                <span className="text-sm text-neutral-400">Current levels out of 100</span>
+              </div>
+              <div className="grid lg:grid-cols-2 gap-8">
+                <div>
+                  <SkillBreakdownChart data={analytics!.skillBreakdown} height={300} />
+                </div>
+                <div className="space-y-4">
+                  {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => (
+                    <div key={skill} className="flex items-center justify-between p-4 bg-neutral-900 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded-full ${
+                          skill === 'technical' ? 'bg-blue-500' :
+                          skill === 'communication' ? 'bg-green-500' :
+                          skill === 'confidence' ? 'bg-yellow-500' : 'bg-purple-500'
+                        }`} />
+                        <span className="text-white font-medium capitalize">{skill}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-xl font-bold ${
+                          score >= 8 ? 'text-green-400' :
+                          score >= 6 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {Math.round(score * 10)}/100
+                        </div>
+                        <div className="text-sm text-neutral-400">
+                          {score >= 8 ? 'Excellent' : score >= 6 ? 'Good' : 'Needs Work'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-sm text-neutral-300 capitalize mb-2">{skill}</div>
-                    <div className="w-full bg-neutral-700 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${
-                          score >= 8 ? 'bg-green-400' :
-                          score >= 6 ? 'bg-yellow-400' : 'bg-red-400'
-                        }`}
-                        style={{ width: `${(score / 10) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
             {/* Performance Trend */}
             <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-              <h2 className="text-xl font-semibold text-white mb-6">Score Progression</h2>
-              <div className="space-y-4">
-                {analytics!.scoreTrend.map((point, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-neutral-300">{point.date}</span>
-                    <div className="flex items-center gap-4 flex-1 mx-4">
-                      <div className="w-full bg-neutral-700 rounded-full h-2 max-w-md">
-                        <div
-                          className={`h-2 rounded-full ${
-                            point.score >= 80 ? 'bg-green-400' :
-                            point.score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
-                          }`}
-                          style={{ width: `${point.score}%` }}
-                        />
-                      </div>
-                      <span className={`font-medium ${
-                        point.score >= 80 ? 'text-green-400' :
-                        point.score >= 60 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>
-                        {point.score}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Score Progression Over Time</h2>
+                <span className="text-sm text-neutral-400">Last {analytics!.scoreTrend.length} sessions</span>
               </div>
+              {analytics!.scoreTrend.length > 0 ? (
+                <ScoreTrendChart data={analytics!.scoreTrend} height={350} />
+              ) : (
+                <div className="flex items-center justify-center h-[350px] text-neutral-400">
+                  <div className="text-center">
+                    <div className="text-2xl mb-2">📊</div>
+                    <p className="text-sm">Complete more sessions to see progress trends</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Session Breakdowns */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Session Types */}
+            {/* Session Breakdowns - Improved Layout */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Session Types Distribution */}
               <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <h2 className="text-lg font-semibold text-white mb-4">Session Types</h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-white">Session Distribution</h2>
+                  <span className="text-sm text-neutral-400">{totalSessions} total</span>
+                </div>
+                <div className="mb-6">
+                  <SessionTypeChart data={analytics!.sessionsByType} height={260} />
+                </div>
                 <div className="space-y-3">
                   {Object.entries(analytics!.sessionsByType).map(([type, count]) => (
-                    <div key={type} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-neutral-300 text-sm">
+                    <div key={type} className="flex items-center justify-between p-3 bg-neutral-900 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">
                           {type === 'technical' ? '</>' : 
-                           type === 'behavioral' ? '💬' : '🏗️'}
+                           type === 'behavioral' ? '💬' : 
+                           type === 'system-design' ? '🏗️' : '🎯'}
                         </span>
-                        <span className="text-neutral-300 capitalize">{type.replace('-', ' ')}</span>
+                        <span className="text-white font-medium capitalize">
+                          {type === 'system-design' ? 'System Design' : type}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="bg-neutral-700 rounded-full h-2 w-16">
-                          <div
-                            className="bg-blue-400 h-2 rounded-full"
-                            style={{ width: `${(count / totalSessions) * 100}%` }}
-                          />
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-blue-400">{count}</div>
+                        <div className="text-xs text-neutral-500">
+                          {Math.round((count / totalSessions) * 100)}%
                         </div>
-                        <span className="text-white font-medium">{count}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Difficulty Distribution */}
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <h2 className="text-lg font-semibold text-white mb-4">Difficulty Levels</h2>
-                <div className="space-y-3">
-                  {Object.entries(analytics!.difficultyBreakdown).map(([difficulty, count]) => (
-                    <div key={difficulty} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${
-                          difficulty === 'hard' ? 'bg-red-400' :
-                          difficulty === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
-                        }`} />
-                        <span className="text-neutral-300 capitalize">{difficulty}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="bg-neutral-700 rounded-full h-2 w-16">
+              {/* Difficulty Levels & Performance Stats */}
+              <div className="space-y-6">
+                {/* Difficulty Distribution */}
+                <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
+                  <h2 className="text-lg font-semibold text-white mb-6">Difficulty Levels</h2>
+                  <div className="space-y-4">
+                    {Object.entries(analytics!.difficultyBreakdown).map(([difficulty, count]) => (
+                      <div key={difficulty} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className={`w-4 h-4 rounded-full ${
+                              difficulty === 'hard' ? 'bg-red-400' :
+                              difficulty === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
+                            }`} />
+                            <span className="text-neutral-200 capitalize font-medium">{difficulty}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-white font-bold text-lg">{count}</span>
+                            <span className="text-neutral-400 text-sm ml-2">
+                              ({Math.round((count / totalSessions) * 100)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="bg-neutral-700 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full ${
+                            className={`h-2 rounded-full transition-all duration-500 ${
                               difficulty === 'hard' ? 'bg-red-400' :
                               difficulty === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
                             }`}
-                            style={{ width: `${(count / totalSessions) * 100}%` }}
+                            style={{ width: `${(count / Math.max(1, totalSessions)) * 100}%` }}
                           />
                         </div>
-                        <span className="text-white font-medium">{count}</span>
                       </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick Performance Stats */}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
+                    <div className="text-sm text-neutral-400 mb-1">Success Rate</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {Math.round((analytics!.recentSessions.filter(s => (s.overallScore || 0) >= 70).length / Math.max(1, analytics!.recentSessions.length)) * 100)}%
                     </div>
-                  ))}
+                    <div className="text-xs text-neutral-500">Sessions &gt;70%</div>
+                  </div>
+                  
+                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">  
+                    <div className="text-sm text-neutral-400 mb-1">Improvement</div>
+                    <div className="text-2xl font-bold text-blue-400">
+                      {analytics!.scoreTrend.length >= 2 ? 
+                        (analytics!.scoreTrend[analytics!.scoreTrend.length - 1].score - analytics!.scoreTrend[0].score > 0 ? '+' : '') +
+                        Math.round(analytics!.scoreTrend[analytics!.scoreTrend.length - 1].score - analytics!.scoreTrend[0].score) + '%'
+                        : 'N/A'
+                      }
+                    </div>
+                    <div className="text-xs text-neutral-500">Since first session</div>
+                  </div>
+
+                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
+                    <div className="text-sm text-neutral-400 mb-1">Consistency</div>
+                    <div className="text-2xl font-bold text-purple-400">
+                      {analytics!.scoreTrend.length >= 3 ? 
+                        Math.max(0, Math.round(100 - (Math.max(...analytics!.scoreTrend.map(s => s.score)) - Math.min(...analytics!.scoreTrend.map(s => s.score)))))
+                        : 'N/A'
+                      }%
+                    </div>
+                    <div className="text-xs text-neutral-500">Score stability</div>
+                  </div>
                 </div>
               </div>
             </div>

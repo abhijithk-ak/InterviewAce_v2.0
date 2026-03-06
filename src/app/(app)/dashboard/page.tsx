@@ -10,6 +10,7 @@ import { SessionModel } from "@/lib/db/models/Session"
 import { OverviewCards } from "@/components/dashboard/OverviewCards"
 import { RecentSessions } from "@/components/dashboard/RecentSessions"
 import { RecommendationCard } from "@/components/dashboard/RecommendationCard"
+import { WeeklyActivityChart } from "@/components/charts"
 import Link from "next/link"
 import { BookOpen, TrendingUp, Target, ExternalLink, Play, ArrowRight, Clock } from "lucide-react"
 
@@ -48,6 +49,7 @@ type DashboardData = {
   scoreTrend: 'improving' | 'declining' | 'stable'
   recentPerformance: number[]
   learningRecommendations: any[]
+  weeklyActivity: Array<{ day: string; sessions: number }>
 }
 
 async function getDashboardData(userEmail: string): Promise<DashboardData | null> {
@@ -169,13 +171,50 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
       },
       domainPerformance
     )
+    // Calculate score trend data for charts
+    const scoreTrendData = sessionsData.slice(0, 10).reverse().map(session => ({
+      date: session.startedAt,
+      score: session.overallScore || 0
+    }))
 
+    // Calculate session type distribution
+    const sessionTypes = {
+      technical: sessionsData.filter(s => s.config.type === 'technical').length,
+      behavioral: sessionsData.filter(s => s.config.type === 'behavioral').length,
+      'system-design': sessionsData.filter(s => s.config.type === 'system-design').length
+    }
     // Get learning recommendations for new users or weak areas
     const learningRecommendations = totalSessions === 0 
       ? LEARNING_RESOURCES.slice(0, 3).map(category => category.resources[0])
       : LEARNING_RESOURCES
           .find(cat => cat.id.includes(weakestSkill[0]) || cat.id.includes(userProfile.domains[0]))
           ?.resources.slice(0, 3) || []
+
+    // Calculate weekly activity (last 7 days)
+    const today = new Date()
+    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const weeklyActivity = weekDays.map((day, index) => {
+      const targetDate = new Date(today)
+      targetDate.setDate(today.getDate() - (today.getDay() - index))
+      
+      const dayStart = new Date(targetDate)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(targetDate)
+      dayEnd.setHours(23, 59, 59, 999)
+      
+      const sessionsCount = sessionsData.filter(session => {
+        const sessionDate = new Date(session.startedAt)
+        return sessionDate >= dayStart && sessionDate <= dayEnd
+      }).length
+      
+      return { day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index === 0 ? 6 : index - 1], sessions: sessionsCount }
+    })
+
+    // Reorder to start from Monday
+    const reorderedActivity = [
+      ...weeklyActivity.slice(1), // Mon-Sat
+      weeklyActivity[0] // Sun
+    ]
 
     return {
       totalSessions,
@@ -188,7 +227,8 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
       recommendation,
       scoreTrend,
       recentPerformance: recentScores,
-      learningRecommendations
+      learningRecommendations,
+      weeklyActivity: reorderedActivity
     }
 
   } catch (error) {
@@ -229,7 +269,8 @@ export default async function Dashboard() {
     recommendation,
     scoreTrend,
     recentPerformance,
-    learningRecommendations
+    learningRecommendations,
+    weeklyActivity
   } = dashboardData
 
   return (
@@ -388,6 +429,15 @@ export default async function Dashboard() {
                 </div>
                 <div className="text-sm text-neutral-500">personal best</div>
               </div>
+            </div>
+
+            {/* Weekly Activity Chart */}
+            <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Weekly Activity</h3>
+                <span className="text-sm text-neutral-400">Sessions this week</span>
+              </div>
+              <WeeklyActivityChart data={weeklyActivity} height={200} />
             </div>
 
             {/* Main Content Grid */}
