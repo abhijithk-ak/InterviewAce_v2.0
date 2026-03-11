@@ -1,5 +1,5 @@
-// Clean Dashboard - Server Component Only
-// Deterministic Control Center with 3 Sections Only
+// Dashboard - Server Component
+// Command Center with unique widgets distinct from Analytics
 
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
@@ -7,12 +7,17 @@ import { connectDB } from "@/lib/db/mongoose"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
 
-import { OverviewCards } from "@/components/dashboard/OverviewCards"
-import { RecentSessions } from "@/components/dashboard/RecentSessions"
-import { RecommendationCard } from "@/components/dashboard/RecommendationCard"
 import { WeeklyActivityChart } from "@/components/charts"
+import { ReadinessRing } from "@/components/dashboard/ReadinessRing"
+import { ActivityHeatmap } from "@/components/dashboard/ActivityHeatmap"
+import { ScoreSparkline } from "@/components/dashboard/ScoreSparkline"
 import Link from "next/link"
-import { BookOpen, TrendingUp, Target, ExternalLink, Play, ArrowRight, Clock } from "lucide-react"
+import {
+  BookOpen, Target, ExternalLink, Play, ChevronRight,
+  ArrowRight, Clock, Zap, Activity,
+  ArrowUpRight, ArrowDownRight, Minus, CheckCircle2, Circle,
+  Flame, Trophy, BarChart2, Brain, MessageSquare, Layers, Users
+} from "lucide-react"
 
 import { calculateTopPriorityRecommendation } from "@/lib/recommendation/priority"
 import { LEARNING_RESOURCES } from "@/lib/resources"
@@ -40,16 +45,26 @@ type SessionData = {
 type DashboardData = {
   totalSessions: number
   averageScore: number
+  bestScore: number
   strongestSkill: string
   strongestSkillScore: number
   weakestSkill: string
   weakestSkillScore: number
+  skillScores: { technical: number; confidence: number; clarity: number; communication: number }
   sessions: SessionData[]
   recommendation: any
   scoreTrend: 'improving' | 'declining' | 'stable'
   recentPerformance: number[]
   learningRecommendations: any[]
   weeklyActivity: Array<{ day: string; sessions: number }>
+  improvement: number
+  // New unique data
+  heatmapData: Array<{ date: string; count: number }>
+  sessionsByType: { technical: number; behavioral: number; 'system-design': number; hr: number }
+  recentScoreHistory: number[]  // last 10 scores oldest→newest
+  currentStreak: number
+  longestStreak: number
+  successRate: number  // % sessions >= 60 score
 }
 
 async function getDashboardData(userEmail: string): Promise<DashboardData | null> {
@@ -99,16 +114,16 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
     sessionsData.forEach(session => {
       session.questions.forEach(question => {
         if (question.evaluation) {
-          if (question.evaluation.technical_depth) {
+          if (question.evaluation.technical_depth !== undefined) {
             skillData.technical.push(question.evaluation.technical_depth)
           }
-          if (question.evaluation.confidence) {
+          if (question.evaluation.confidence !== undefined) {
             skillData.confidence.push(question.evaluation.confidence)
           }
-          if (question.evaluation.clarity) {
+          if (question.evaluation.clarity !== undefined) {
             skillData.clarity.push(question.evaluation.clarity)
           }
-          if (question.evaluation.score) {
+          if (question.evaluation.score !== undefined) {
             skillData.communication.push(question.evaluation.score)
           }
         }
@@ -216,19 +231,110 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
       weeklyActivity[0] // Sun
     ]
 
+    // ── NEW: Activity Heatmap (last 35 days) ──
+    const heatmapData: Array<{ date: string; count: number }> = []
+    for (let i = 34; i >= 0; i--) {
+      const d = new Date(today)
+      d.setDate(today.getDate() - i)
+      d.setHours(0, 0, 0, 0)
+      const dEnd = new Date(d)
+      dEnd.setHours(23, 59, 59, 999)
+      const count = sessionsData.filter(s => {
+        const sd = new Date(s.startedAt)
+        return sd >= d && sd <= dEnd
+      }).length
+      heatmapData.push({ date: d.toISOString(), count })
+    }
+
+    // ── NEW: Session type breakdown ──
+    const sessionsByType = {
+      technical: sessionsData.filter(s => s.config.type?.toLowerCase().trim() === 'technical').length,
+      behavioral: sessionsData.filter(s => {
+        const t = s.config.type?.toLowerCase().trim()
+        return t === 'behavioral' || t === 'behavioural'
+      }).length,
+      'system-design': sessionsData.filter(s => {
+        const t = s.config.type?.toLowerCase().trim().replace(/[\s_]+/g, '-')
+        return t === 'system-design'
+      }).length,
+      hr: sessionsData.filter(s => s.config.type?.toLowerCase().trim() === 'hr').length,
+    }
+
+    // ── NEW: Recent score history (oldest→newest, last 10) ──
+    const recentScoreHistory = sessionsData
+      .slice(0, 10)
+      .reverse()
+      .map(s => s.overallScore || 0)
+
+    // ── NEW: Streak calculation ──
+    let currentStreak = 0
+    let longestStreak = 0
+    let tempStreak = 0
+    const todayStart = new Date(today)
+    todayStart.setHours(0, 0, 0, 0)
+
+    for (let i = 0; i < heatmapData.length; i++) {
+      const dayFromEnd = heatmapData[heatmapData.length - 1 - i]
+      if (dayFromEnd.count > 0) {
+        if (i === 0 || heatmapData[heatmapData.length - i].count > 0) {
+          currentStreak++
+          tempStreak++
+        } else break
+      } else {
+        if (i === 0) currentStreak = 0
+        break
+      }
+    }
+    // Simplified: count consecutive days from today backwards
+    currentStreak = 0
+    for (let i = heatmapData.length - 1; i >= 0; i--) {
+      if (heatmapData[i].count > 0) currentStreak++
+      else break
+    }
+    // Longest streak
+    for (const day of heatmapData) {
+      if (day.count > 0) {
+        tempStreak++
+        longestStreak = Math.max(longestStreak, tempStreak)
+      } else {
+        tempStreak = 0
+      }
+    }
+
+    // ── NEW: Success rate (% sessions >= 60) ──
+    const successRate = totalSessions > 0
+      ? Math.round((sessionsData.filter(s => (s.overallScore || 0) >= 60).length / totalSessions) * 100)
+      : 0
+
     return {
       totalSessions,
       averageScore,
+      bestScore: Math.max(...sessionsData.map(s => s.overallScore || 0), 0),
       strongestSkill: strongestSkill[0].charAt(0).toUpperCase() + strongestSkill[0].slice(1),
-      strongestSkillScore: Math.round(strongestSkill[1] * 10), // Convert to 0-100 scale
+      strongestSkillScore: Math.round(strongestSkill[1] * 10),
       weakestSkill: weakestSkill[0].charAt(0).toUpperCase() + weakestSkill[0].slice(1),
-      weakestSkillScore: Math.round(weakestSkill[1] * 10), // Convert to 0-100 scale
+      weakestSkillScore: Math.round(weakestSkill[1] * 10),
+      skillScores: {
+        technical:     Math.round(skillAverages.technical * 10),
+        confidence:    Math.round(skillAverages.confidence * 10),
+        clarity:       Math.round(skillAverages.clarity * 10),
+        communication: Math.round(skillAverages.communication * 10),
+      },
       sessions: sessionsData,
       recommendation,
       scoreTrend,
       recentPerformance: recentScores,
       learningRecommendations,
-      weeklyActivity: reorderedActivity
+      weeklyActivity: reorderedActivity,
+      improvement: recentScores.length >= 2
+        ? recentScores[recentScores.length - 1] - recentScores[0]
+        : 0,
+      heatmapData,
+      sessionsByType,
+      recentScoreHistory,
+      currentStreak,
+      longestStreak,
+      successRate,
     }
 
   } catch (error) {
@@ -238,22 +344,18 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
 }
 
 export default async function Dashboard() {
-  // Server-side session check
   const session = await auth()
   
   if (!session?.user?.email) {
     redirect('/login')
   }
 
-  // Fetch all data server-side (no client fetch, no useEffect)
   const dashboardData = await getDashboardData(session.user.email)
   
   if (!dashboardData) {
     return (
-      <div className="p-8">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <p className="text-neutral-400">Failed to load dashboard data</p>
-        </div>
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <p className="text-neutral-400">Failed to load dashboard data</p>
       </div>
     )
   }
@@ -261,321 +363,416 @@ export default async function Dashboard() {
   const {
     totalSessions,
     averageScore,
-    strongestSkill,
-    strongestSkillScore,
-    weakestSkill,
-    weakestSkillScore,
+    bestScore,
+    skillScores,
     sessions,
     recommendation,
     scoreTrend,
     recentPerformance,
     learningRecommendations,
-    weeklyActivity
+    weeklyActivity,
+    improvement,
+    heatmapData,
+    sessionsByType,
+    recentScoreHistory,
+    currentStreak,
+    longestStreak,
+    successRate,
   } = dashboardData
 
+  const userName = session.user?.name?.split(' ')[0] ?? 'there'
+  const hour = new Date().getUTCHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
+  const TYPE_META: Record<string, { icon: string; color: string; label: string; barColor: string }> = {
+    technical:      { icon: '</>', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', label: 'Technical', barColor: '#6366f1' },
+    behavioral:     { icon: '💬',  color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', label: 'Behavioral', barColor: '#10b981' },
+    'system-design':{ icon: '🏗️', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', label: 'System Design', barColor: '#f59e0b' },
+    hr:             { icon: '🎯',  color: 'text-pink-400 bg-pink-500/10 border-pink-500/20', label: 'HR', barColor: '#ec4899' },
+  }
+
   return (
-    <div className="min-h-screen bg-neutral-900">
-      <div className="p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Dashboard
-          </h1>
-          <p className="text-neutral-400">
-            Your interview performance overview
-          </p>
+    <div className="min-h-screen bg-neutral-950">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">
+              {greeting}, {userName} 👋
+            </h1>
+            <p className="text-neutral-500 text-sm mt-1">
+              {totalSessions === 0
+                ? 'Ready to start your interview prep journey?'
+                : `${totalSessions} session${totalSessions > 1 ? 's' : ''} completed · Keep it up!`}
+            </p>
+          </div>
+          <Link href="/interview/setup">
+            <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg shadow-indigo-500/20">
+              <Play className="w-4 h-4" /> New Session
+            </button>
+          </Link>
         </div>
 
         {totalSessions === 0 ? (
-          // New User Experience
-          <div className="space-y-8">
-            {/* Welcome Section */}
-            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-xl p-8 border border-neutral-700">
+          /* ─────────── NEW USER ─────────── */
+          <div className="space-y-6">
+            {/* Hero */}
+            <div className="bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-neutral-900/0 border border-indigo-500/20 rounded-2xl p-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Welcome to InterviewAce!</h2>
-                  <p className="text-neutral-300 mb-4">Start your interview preparation journey with personalized practice sessions.</p>
-                  <Link href="/interview/setup">
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
-                      <Play className="w-5 h-5" />
-                      Start First Interview
-                    </button>
-                  </Link>
-                </div>
-                <div className="hidden md:block">
-                  <div className="w-24 h-24 bg-blue-500/20 rounded-full flex items-center justify-center">
-                    <Target className="w-12 h-12 text-blue-400" />
+                  <span className="text-xs font-semibold text-indigo-400 uppercase tracking-widest">Get Started</span>
+                  <h2 className="text-2xl font-bold text-white mt-2 mb-2">Welcome to InterviewAce</h2>
+                  <p className="text-neutral-400 mb-6 max-w-lg">
+                    Practice realistic AI-conducted interviews, track your performance over time, and get personalized recommendations to ace your next job interview.
+                  </p>
+                  <div className="flex gap-3">
+                    <Link href="/interview/setup">
+                      <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 shadow-lg shadow-indigo-500/25">
+                        <Play className="w-4 h-4" /> Start First Interview
+                      </button>
+                    </Link>
+                    <Link href="/learning-hub">
+                      <button className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center gap-2">
+                        <BookOpen className="w-4 h-4" /> Browse Resources
+                      </button>
+                    </Link>
                   </div>
+                </div>
+                <div className="hidden md:flex w-28 h-28 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl items-center justify-center flex-shrink-0">
+                  <Target className="w-14 h-14 text-indigo-400" />
                 </div>
               </div>
             </div>
 
-            {/* Getting Started Cards */}
-            <div className="grid md:grid-cols-3 gap-6">
-              <Link href="/interview/setup" className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 hover:border-neutral-600 transition-colors group">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center mb-4">
-                  <Play className="w-6 h-6 text-blue-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Practice Interviews</h3>
-                <p className="text-neutral-400 text-sm mb-3">Start with personalized mock interviews tailored to your experience level.</p>
-                <div className="flex items-center text-blue-400 text-sm group-hover:text-blue-300">
-                  <span>Get Started</span>
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </div>
-              </Link>
-
-              <Link href="/learning-hub" className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 hover:border-neutral-600 transition-colors group">
-                <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mb-4">
-                  <BookOpen className="w-6 h-6 text-green-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Learning Hub</h3>
-                <p className="text-neutral-400 text-sm mb-3">Explore curated resources to strengthen your technical and behavioral skills.</p>
-                <div className="flex items-center text-green-400 text-sm group-hover:text-green-300">
-                  <span>Explore Resources</span>
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </div>
-              </Link>
-
-              <Link href="/github-wrap" className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 hover:border-neutral-600 transition-colors group">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center mb-4">
-                  <TrendingUp className="w-6 h-6 text-purple-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">GitHub Analysis</h3>
-                <p className="text-neutral-400 text-sm mb-3">Get insights into your coding patterns and project portfolio.</p>
-                <div className="flex items-center text-purple-400 text-sm group-hover:text-purple-300">
-                  <span>View Analysis</span>
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </div>
-              </Link>
-            </div>
-
-            {/* Recommended Learning Path */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Recommended Learning Path</h2>
-                <Link href="/learning-hub" className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1">
-                  View All <ArrowRight className="w-4 h-4" />
+            {/* Quick action cards */}
+            <div className="grid md:grid-cols-3 gap-4">
+              {[
+                { href: '/interview/setup', icon: <Play className="w-5 h-5 text-indigo-400" />, bg: 'bg-indigo-500/10', label: 'Practice Interviews', desc: 'Mock interviews for Technical, Behavioral, System Design & HR', cta: 'Start Now', ctaColor: 'text-indigo-400' },
+                { href: '/learning-hub', icon: <BookOpen className="w-5 h-5 text-emerald-400" />, bg: 'bg-emerald-500/10', label: 'Learning Hub', desc: 'Curated resources to sharpen your technical and soft skills.', cta: 'Explore', ctaColor: 'text-emerald-400' },
+                { href: '/github-wrap', icon: <Activity className="w-5 h-5 text-purple-400" />, bg: 'bg-purple-500/10', label: 'GitHub Analysis', desc: 'Analyze your coding activity and showcase project portfolio.', cta: 'Connect', ctaColor: 'text-purple-400' },
+              ].map(card => (
+                <Link key={card.href} href={card.href} className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl p-5 transition-all group hover:translate-y-[-2px]">
+                  <div className={`w-10 h-10 ${card.bg} rounded-lg flex items-center justify-center mb-4`}>
+                    {card.icon}
+                  </div>
+                  <h3 className="text-sm font-semibold text-white mb-1.5">{card.label}</h3>
+                  <p className="text-neutral-500 text-xs mb-4 leading-relaxed">{card.desc}</p>
+                  <div className={`flex items-center text-xs font-medium ${card.ctaColor} group-hover:gap-2 gap-1 transition-all`}>
+                    {card.cta} <ArrowRight className="w-3 h-3" />
+                  </div>
                 </Link>
-              </div>
-              <div className="grid md:grid-cols-3 gap-6">
-                {learningRecommendations.map((resource: any, index: number) => (
-                  <div key={resource.id} className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs text-blue-400 font-medium uppercase tracking-wider">
-                        {resource.type}
-                      </span>
-                      <span className="text-xs text-neutral-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {resource.duration}
-                      </span>
-                    </div>
-                    <h3 className="font-semibold text-white mb-2">{resource.title}</h3>
-                    <p className="text-neutral-400 text-sm mb-4">{resource.description}</p>
-                    <a 
-                      href={resource.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center text-blue-400 hover:text-blue-300 text-sm transition-colors"
-                    >
-                      Start Learning <ExternalLink className="w-3 h-3 ml-1" />
-                    </a>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          // Existing User Experience
-          <div className="space-y-8">
-            {/* Enhanced Analytics Section */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Total Sessions</span>
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{totalSessions}</div>
-                <div className="text-sm text-neutral-500">completed</div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Average Score</span>
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{averageScore}%</div>
-                <div className="text-sm text-neutral-500">performance</div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Trend</span>
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">
-                  {scoreTrend === 'improving' ? '↗️' : scoreTrend === 'declining' ? '↘️' : '→'}
-                </div>
-                <div className={`text-sm capitalize ${
-                  scoreTrend === 'improving' ? 'text-green-400' :
-                  scoreTrend === 'declining' ? 'text-red-400' : 'text-neutral-400'
-                }`}>
-                  {scoreTrend}
-                </div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Best Score</span>
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">
-                  {Math.max(...sessions.map(s => s.overallScore || 0))}%
-                </div>
-                <div className="text-sm text-neutral-500">personal best</div>
-              </div>
+              ))}
             </div>
 
-            {/* Weekly Activity Chart */}
-            <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">Weekly Activity</h3>
-                <span className="text-sm text-neutral-400">Sessions this week</span>
-              </div>
-              <WeeklyActivityChart data={weeklyActivity} height={200} />
-            </div>
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Recent Sessions */}
+            {/* Learning recommendations */}
+            {learningRecommendations.length > 0 && (
               <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-white">Recent Sessions</h2>
-                  <Link href="/sessions" className="text-neutral-400 hover:text-white text-sm transition-colors">
-                    View all
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-white">Recommended to Start</h2>
+                  <Link href="/learning-hub" className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                    All resources <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
-                
-                <div className="space-y-4">
-                  {sessions.slice(0, 5).map((sessionData, index) => (
-                    <div key={sessionData._id} className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-10 h-10 bg-neutral-700 rounded-lg flex items-center justify-center">
-                            <span className="text-neutral-300 text-sm">
-                              {sessionData.config.type === 'technical' ? '</>' : 
-                               sessionData.config.type === 'behavioral' ? '💬' : 
-                               sessionData.config.type === 'system-design' ? '🏗️' : '🎯'}
-                            </span>
-                          </div>
-                          <div>
-                            <div className="font-medium text-white capitalize">
-                              {sessionData.config.type} • {sessionData.config.role}
-                            </div>
-                            <div className="text-sm text-neutral-400">
-                              {new Date(sessionData.startedAt).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric"
-                              })} • {sessionData.config.difficulty}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className={`text-xl font-bold ${
-                            (sessionData.overallScore || 0) >= 80 ? 'text-green-400' :
-                            (sessionData.overallScore || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
-                          }`}>
-                            {sessionData.overallScore || 0}%
-                          </div>
-                        </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  {learningRecommendations.slice(0, 3).map((r: any) => (
+                    <div key={r.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-medium text-indigo-400 uppercase tracking-wide">{r.type}</span>
+                        <span className="text-xs text-neutral-500 flex items-center gap-1"><Clock className="w-3 h-3" />{r.duration}</span>
                       </div>
-                    </div>
-                  ))}
-
-                  {sessions.length === 0 && (
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 bg-neutral-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <BookOpen className="w-8 h-8 text-neutral-400" />
-                      </div>
-                      <h3 className="text-lg font-medium text-white mb-2">No sessions yet</h3>
-                      <p className="text-neutral-400 mb-4">Start your first interview to see your progress here</p>
-                      <Link href="/interview/setup">
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
-                          Start Interview
-                        </button>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Recommendations */}
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-white">Recommended</h2>
-                  <span className="text-sm text-neutral-400">Based on performance</span>
-                </div>
-                
-                {/* Single Priority Recommendation */}
-                {recommendation ? (
-                  <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700 mb-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm text-blue-400 font-medium uppercase tracking-wider">
-                        Priority Focus
-                      </span>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        recommendation.suggestedDifficulty === 'hard' ? 'bg-red-500/20 text-red-400' :
-                        recommendation.suggestedDifficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
-                      }`}>
-                        {recommendation.suggestedDifficulty}
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-semibold text-white mb-2 capitalize">
-                      {recommendation.domain.replace('-', ' ')} Practice
-                    </h3>
-                    <p className="text-neutral-400 text-sm mb-4">{recommendation.reason}</p>
-                    <div className="flex gap-2">
-                      <Link href="/interview/setup">
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors">
-                          Start Practice
-                        </button>
-                      </Link>
-                      <Link href="/learning-hub">
-                        <button className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-2 rounded text-sm transition-colors">
-                          Study Resources
-                        </button>
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-neutral-400 text-center py-8">
-                    Complete more sessions for personalized recommendations.
-                  </div>
-                )}
-
-                {/* Learning Resources for Current Week Area */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium text-neutral-300 uppercase tracking-wider">Learn More</h3>
-                  {learningRecommendations.slice(0, 2).map((resource: any, index: number) => (
-                    <div key={resource.id} className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-green-400 font-medium uppercase tracking-wider">
-                          {resource.type}
-                        </span>
-                        <span className="text-xs text-neutral-400">{resource.duration}</span>
-                      </div>
-                      <h4 className="font-medium text-white mb-1">{resource.title}</h4>
-                      <p className="text-neutral-400 text-sm mb-3">{resource.description.slice(0, 80)}...</p>
-                      <a 
-                        href={resource.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-green-400 hover:text-green-300 text-sm transition-colors"
-                      >
-                        Study Now <ExternalLink className="w-3 h-3 ml-1" />
+                      <h3 className="font-medium text-white text-sm mb-1.5">{r.title}</h3>
+                      <p className="text-neutral-500 text-xs mb-3 line-clamp-2">{r.description}</p>
+                      <a href={r.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-indigo-400 hover:text-indigo-300 text-xs font-medium gap-1 transition-colors">
+                        Start Learning <ExternalLink className="w-3 h-3" />
                       </a>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
+            )}
           </div>
+        ) : (
+          /* ─────────── RETURNING USER ─────────── */
+          <>
+            {/* ══ ROW 1: Readiness Ring + Streak Stats + Next Challenge ══ */}
+            <div className="grid lg:grid-cols-3 gap-4">
+
+              {/* Readiness Ring */}
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 flex flex-col items-center justify-center hover:border-neutral-700 transition-colors">
+                <p className="text-xs font-medium text-neutral-500 uppercase tracking-widest mb-4">Interview Readiness</p>
+                <ReadinessRing score={averageScore} sessions={totalSessions} trend={scoreTrend} />
+              </div>
+
+              {/* Stats grid: 4 micro-cards */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Streak */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col justify-between hover:border-orange-500/30 transition-colors group">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">Current Streak</span>
+                    <Flame className="w-4 h-4 text-orange-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-3xl font-bold text-orange-400">{currentStreak}</div>
+                  <div className="text-xs text-neutral-600">days in a row</div>
+                </div>
+                {/* Longest streak */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col justify-between hover:border-amber-500/30 transition-colors group">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">Longest Run</span>
+                    <Trophy className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-3xl font-bold text-amber-400">{longestStreak}</div>
+                  <div className="text-xs text-neutral-600">personal best</div>
+                </div>
+                {/* Success rate */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col justify-between hover:border-emerald-500/30 transition-colors group">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">Pass Rate</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-3xl font-bold text-emerald-400">{successRate}%</div>
+                  <div className="text-xs text-neutral-600">scored ≥ 60</div>
+                </div>
+                {/* Best score */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col justify-between hover:border-indigo-500/30 transition-colors group">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">Best Score</span>
+                    <Zap className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="text-3xl font-bold text-indigo-400">{bestScore}%</div>
+                  <div className="text-xs text-neutral-600">all time</div>
+                </div>
+              </div>
+
+              {/* Next Challenge CTA */}
+              {recommendation ? (
+                <div className="bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-neutral-900 border border-indigo-500/25 rounded-xl p-6 flex flex-col justify-between hover:border-indigo-500/50 transition-colors">
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 bg-indigo-500/15 rounded-lg flex items-center justify-center">
+                        <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                      </div>
+                      <span className="text-xs font-semibold text-indigo-400 uppercase tracking-widest">Next Challenge</span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white mb-2 capitalize leading-snug">
+                      {recommendation.domain.replace(/-/g, ' ')} Practice
+                    </h3>
+                    <p className="text-neutral-400 text-xs leading-relaxed line-clamp-3 mb-4">{recommendation.reason}</p>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
+                        recommendation.suggestedDifficulty === 'hard'
+                          ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                          : recommendation.suggestedDifficulty === 'medium'
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}>{recommendation.suggestedDifficulty} difficulty</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link href="/interview/setup" className="flex-1">
+                      <button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
+                        <Play className="w-4 h-4" /> Practice Now
+                      </button>
+                    </Link>
+                    <Link href="/learning-hub">
+                      <button className="bg-neutral-800/80 hover:bg-neutral-700 border border-neutral-700 text-neutral-300 px-3 py-2.5 rounded-lg text-sm transition-colors">
+                        <BookOpen className="w-4 h-4" />
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 flex flex-col items-center justify-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+                    <Play className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-sm font-semibold text-white mb-1">Keep Practicing</h3>
+                    <p className="text-xs text-neutral-500">Start a new session to unlock personalized recommendations.</p>
+                  </div>
+                  <Link href="/interview/setup">
+                    <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                      New Session
+                    </button>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* ══ ROW 2: Activity Heatmap + Interview Type Breakdown ══ */}
+            <div className="grid lg:grid-cols-5 gap-4">
+
+              {/* Activity Heatmap (GitHub-style) */}
+              <div className="lg:col-span-3 bg-neutral-900 border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <h2 className="text-base font-semibold text-white">Practice Activity</h2>
+                    <span className="text-xs text-neutral-600">· last 35 days</span>
+                  </div>
+                  <span className="text-xs text-neutral-500 bg-neutral-800 border border-neutral-700 px-2.5 py-1 rounded-full">
+                    {heatmapData.filter(d => d.count > 0).length} active days
+                  </span>
+                </div>
+                <ActivityHeatmap data={heatmapData} totalSessions={totalSessions} />
+              </div>
+
+              {/* Interview Type Breakdown — horizontal bars */}
+              <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+                <div className="flex items-center gap-2 mb-5">
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <h2 className="text-base font-semibold text-white">Interview Mix</h2>
+                </div>
+                <div className="space-y-4">
+                  {(Object.entries(sessionsByType) as [string, number][]).map(([type, count]) => {
+                    const m = TYPE_META[type] ?? TYPE_META['technical']
+                    const pct = totalSessions > 0 ? Math.round((count / totalSessions) * 100) : 0
+                    return (
+                      <div key={type}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">{m.icon}</span>
+                            <span className="text-xs font-medium text-neutral-300">{m.label}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-neutral-500">{count} session{count !== 1 ? 's' : ''}</span>
+                            <span className="text-xs font-bold text-white w-8 text-right">{pct}%</span>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, backgroundColor: m.barColor }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="mt-5 pt-4 border-t border-neutral-800">
+                  <p className="text-xs text-neutral-500 text-center">
+                    {totalSessions === 1
+                      ? 'Only 1 type explored — try a different interview style!'
+                      : Object.values(sessionsByType).filter(v => v > 0).length >= 3
+                      ? '✓ Great mix — you\'re covering multiple interview types'
+                      : 'Try different interview types for a well-rounded prep'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ══ ROW 3: Recent Sessions (with sparklines) + Weekly Activity ══ */}
+            <div className="grid lg:grid-cols-5 gap-4">
+
+              {/* Recent Sessions with score sparkline */}
+              <div className="lg:col-span-3 bg-neutral-900 border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 transition-colors">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Recent Sessions</h2>
+                  <Link href="/sessions" className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+                    View all <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+                <div className="space-y-2">
+                  {sessions.slice(0, 5).map((s, idx) => {
+                    const typeKey = s.config.type?.toLowerCase().trim().replace(/[\s_]+/g, '-')
+                    const m = TYPE_META[typeKey] ?? TYPE_META['technical']
+                    const score = s.overallScore ?? 0
+                    // Build mini sparkline for each session from session-level data
+                    const sessionSubs = s.questions
+                      .filter(q => q.evaluation?.score != null)
+                      .map(q => (q.evaluation!.score! * 10))
+                    return (
+                      <div key={s._id} className="flex items-center gap-3 p-3 bg-neutral-800/60 hover:bg-neutral-800 rounded-lg transition-colors group border border-transparent hover:border-neutral-700">
+                        <div className={`w-9 h-9 rounded-lg border flex items-center justify-center text-sm flex-shrink-0 ${m.color}`}>
+                          {m.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">
+                            {s.config.role} · {m.label}
+                          </div>
+                          <div className="text-xs text-neutral-500">
+                            {new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.config.difficulty}
+                          </div>
+                        </div>
+                        {/* Mini sparkline per session */}
+                        {sessionSubs.length >= 2 && (
+                          <div className="flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                            <ScoreSparkline scores={sessionSubs} width={60} height={24} />
+                          </div>
+                        )}
+                        <div className={`text-base font-bold flex-shrink-0 min-w-[3rem] text-right ${
+                          score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-amber-400' : 'text-red-400'
+                        }`}>{score}%</div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Link href="/interview/setup" className="mt-4 flex items-center justify-center gap-2 text-xs text-neutral-500 hover:text-indigo-400 transition-colors py-2.5 border border-dashed border-neutral-700 hover:border-indigo-500/40 rounded-lg group">
+                  <Play className="w-3 h-3 group-hover:text-indigo-400" /> Start new session
+                </Link>
+              </div>
+
+              {/* Right: Weekly bar + resource */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-indigo-400" />
+                      <h2 className="text-sm font-semibold text-white">This Week</h2>
+                    </div>
+                    <span className="text-xs text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded-full border border-neutral-700">
+                      {weeklyActivity.reduce((s, d) => s + d.sessions, 0)}
+                    </span>
+                  </div>
+                  <WeeklyActivityChart data={weeklyActivity} height={130} />
+                </div>
+
+                {/* Score trend insight */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart2 className="w-4 h-4 text-indigo-400" />
+                    <span className="text-sm font-semibold text-white">Score Trend</span>
+                  </div>
+                  {recentScoreHistory.length >= 2 ? (
+                    <>
+                      <div className="mb-3">
+                        <ScoreSparkline scores={recentScoreHistory} width={200} height={50} />
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-neutral-500">Last {recentScoreHistory.length} sessions</span>
+                        <span className={`font-semibold flex items-center gap-1 ${
+                          scoreTrend === 'improving' ? 'text-emerald-400' :
+                          scoreTrend === 'declining' ? 'text-red-400' : 'text-neutral-400'
+                        }`}>
+                          {scoreTrend === 'improving'
+                            ? <><ArrowUpRight className="w-3 h-3" /> Improving</>
+                            : scoreTrend === 'declining'
+                            ? <><ArrowDownRight className="w-3 h-3" /> Declining</>
+                            : <><Minus className="w-3 h-3" /> Stable</>}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-neutral-500">Complete more sessions to see your score trend.</p>
+                  )}
+                </div>
+
+                {/* Top resource */}
+                {learningRecommendations.slice(0, 1).map((r: any) => (
+                  <div key={r.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 hover:border-neutral-700 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-emerald-400 uppercase tracking-wide">{r.type}</span>
+                      <span className="text-xs text-neutral-500 flex items-center gap-1"><Clock className="w-3 h-3" />{r.duration}</span>
+                    </div>
+                    <h4 className="font-medium text-white text-sm mb-1.5 line-clamp-2">{r.title}</h4>
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-emerald-400 hover:text-emerald-300 text-xs font-medium gap-1 transition-colors">
+                      Study Now <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

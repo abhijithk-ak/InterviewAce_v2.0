@@ -6,9 +6,13 @@ import { Button } from "@/components/ui"
 import { selectQuestions, MAX_QUESTIONS } from "@/lib/questions/bank"
 import type { Question } from "@/lib/questions/bank"
 import { Mic, MicOff, Video, VideoOff, Camera, Volume2 } from "lucide-react"
+import { loadSettings } from "@/lib/settings/store"
 
 type EvaluationResult = {
   score: number
+  deterministicScore?: number
+  semanticScore?: number
+  finalScore?: number
   confidence: number
   clarity: number
   technical_depth: number
@@ -26,18 +30,41 @@ type InterviewMessage = {
   meta?: {
     type?: "question" | "follow-up" | "greeting" | "feedback"
     questionId?: string
+    evaluation?: {
+      overallScore: number
+      breakdown: {
+        technical: number
+        clarity: number
+        confidence: number
+        relevance: number
+        structure: number
+      }
+      strengths?: string[]
+      improvements?: string[]
+    }
   }
+}
+
+type Metrics = {
+  deterministicScore: number
+  semanticScore: number
+  finalScore: number
+  answerLength: number
+  responseTime: number
+  timestamp: string
 }
 
 type QuestionProgress = {
   questionId: string
   followUpUsed: boolean
   evaluation?: EvaluationResult
+  metrics?: Metrics
 }
 
 type InterviewState = {
   status: "idle" | "active" | "ended"
   currentQuestionIndex: number
+  totalQuestions: number
   questions: Question[]
   messages: InterviewMessage[]
   questionProgress: Map<string, QuestionProgress>
@@ -46,6 +73,7 @@ type InterviewState = {
     type: string
     difficulty: string
   }
+  scoringMode?: "deterministic" | "hybrid"
 }
 
 export default function InterviewSession() {
@@ -53,6 +81,7 @@ export default function InterviewSession() {
   const [state, setState] = useState<InterviewState>({
     status: "idle",
     currentQuestionIndex: 0,
+    totalQuestions: 5, // Default, will be updated from user settings
     questions: [],
     messages: [],
     questionProgress: new Map(),
@@ -61,13 +90,18 @@ export default function InterviewSession() {
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [startedAt] = useState(new Date().toISOString())
+  const [showCompletionScreen, setShowCompletionScreen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const hasSavedRef = useRef(false)
+  const hasStartedRef = useRef(false)       // guards against double-start in React Strict Mode
+  const interviewEndedRef = useRef(false)   // prevents speakText calls after session ends
   const [isListening, setIsListening] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true)
+  const [finalScore, setFinalScore] = useState<number | null>(null)
   const recognitionRef = useRef<any>(null)
+  const isRecognitionActiveRef = useRef(false) // tracks actual SpeechRecognition running state
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const speechSynthesisRef = useRef<SpeechSynthesis | null>(null)
   const speechQueueRef = useRef<string[]>([])
@@ -86,7 +120,7 @@ export default function InterviewSession() {
 
   // Function to speak AI responses with queueing
   const speakText = useCallback((text: string) => {
-    if (!speechSynthesisRef.current || !isVoiceEnabled) return
+    if (!speechSynthesisRef.current || !isVoiceEnabled || interviewEndedRef.current) return
     
     // Add to queue
     speechQueueRef.current.push(text)
@@ -108,18 +142,18 @@ export default function InterviewSession() {
     utterance.rate = 1.0
     utterance.pitch = 1.0
     utterance.volume = 1.0
-    
-    // Try to use a pleasant female voice
+
+    // Prioritise natural-sounding voices
     const voices = speechSynthesisRef.current.getVoices()
-    const femaleVoice = voices.find(voice => 
-      voice.name.includes('female') || 
-      voice.name.includes('Female') ||
-      voice.name.includes('Samantha') ||
-      voice.name.includes('Karen') ||
-      voice.name.includes('Zira')
-    )
-    if (femaleVoice) {
-      utterance.voice = femaleVoice
+    const preferredVoice =
+      voices.find(v => v.name === 'Google UK English Female') ||
+      voices.find(v => v.name.includes('Google UK English Female')) ||
+      voices.find(v => v.name.includes('Microsoft Zira')) ||
+      voices.find(v => v.name.includes('Samantha')) ||
+      voices.find(v => v.name.toLowerCase().includes('female') && v.lang.startsWith('en')) ||
+      voices.find(v => v.lang.startsWith('en-'))
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
     }
     
     utterance.onstart = () => setIsSpeaking(true)
@@ -168,10 +202,12 @@ export default function InterviewSession() {
         
         recognitionRef.current.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error)
+          isRecognitionActiveRef.current = false
           setIsListening(false)
         }
         
         recognitionRef.current.onend = () => {
+          isRecognitionActiveRef.current = false
           setIsListening(false)
         }
       }
@@ -186,15 +222,27 @@ export default function InterviewSession() {
 
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return
-    
-    if (isListening) {
-      recognitionRef.current.stop()
+
+    if (isRecognitionActiveRef.current) {
+      try { recognitionRef.current.stop() } catch {}
+      isRecognitionActiveRef.current = false
       setIsListening(false)
     } else {
-      recognitionRef.current.start()
-      setIsListening(true)
+      try {
+        recognitionRef.current.start()
+        isRecognitionActiveRef.current = true
+        setIsListening(true)
+      } catch (e: any) {
+        if (e?.name === 'InvalidStateError') {
+          // Recognition is already running — sync state to match
+          isRecognitionActiveRef.current = true
+          setIsListening(true)
+        } else {
+          console.error('Speech recognition start error:', e)
+        }
+      }
     }
-  }, [isListening])
+  }, [])
 
   const toggleVideo = useCallback(() => {
     setIsVideoEnabled(prev => !prev)
@@ -224,7 +272,7 @@ export default function InterviewSession() {
       const overallScore =
         evaluations.length > 0
           ? Math.round(
-              evaluations.reduce((sum, e) => sum + e.score, 0) / evaluations.length
+              evaluations.reduce((sum, e) => sum + (e.finalScore ?? e.score), 0) / evaluations.length
             )
           : 0
 
@@ -236,11 +284,22 @@ export default function InterviewSession() {
         kind: "main"
         evaluation?: {
           score: number
+          deterministicScore?: number
+          semanticScore?: number
+          finalScore?: number
           confidence: number
           clarity: number
           technical_depth: number
           strengths: string[]
           improvements: string[]
+        }
+        metrics?: {
+          deterministicScore: number
+          semanticScore: number
+          finalScore: number
+          answerLength: number
+          responseTime: number
+          timestamp: string
         }
       }> = []
 
@@ -252,11 +311,28 @@ export default function InterviewSession() {
             .slice(index + 1)
             .find(m => m.role === "user")
 
+          // Look up evaluation from questionProgress using the questionId stored on the message
+          const questionId = message.meta?.questionId
+          const progress = questionId ? state.questionProgress.get(questionId) : undefined
+
           questionsWithAnswers.push({
             text: message.content,
             answer: nextUserMessage?.content || "",
             kind: "main",
-            evaluation: undefined // Evaluations handled by API, scores calculated below
+            evaluation: progress?.evaluation
+              ? {
+                  score: progress.evaluation.finalScore ?? progress.evaluation.score,
+                  deterministicScore: progress.evaluation.deterministicScore,
+                  semanticScore: progress.evaluation.semanticScore,
+                  finalScore: progress.evaluation.finalScore ?? progress.evaluation.score,
+                  confidence: progress.evaluation.confidence,
+                  clarity: progress.evaluation.clarity,
+                  technical_depth: progress.evaluation.technical_depth,
+                  strengths: progress.evaluation.strengths ?? [],
+                  improvements: progress.evaluation.improvements ?? [],
+                }
+              : undefined,
+            metrics: progress?.metrics,
           })
         }
       })
@@ -284,7 +360,10 @@ export default function InterviewSession() {
           kind: "main" as const,
           evaluation: progress?.evaluation
             ? {
-                score: progress.evaluation.score,
+                score: progress.evaluation.finalScore ?? progress.evaluation.score,
+                deterministicScore: progress.evaluation.deterministicScore,
+                semanticScore: progress.evaluation.semanticScore,
+                finalScore: progress.evaluation.finalScore ?? progress.evaluation.score,
                 confidence: progress.evaluation.confidence,
                 clarity: progress.evaluation.clarity,
                 technical_depth: progress.evaluation.technical_depth,
@@ -292,6 +371,7 @@ export default function InterviewSession() {
                 improvements: progress.evaluation.improvements,
               }
             : undefined,
+          metrics: progress?.metrics,
         }
       })
 
@@ -332,13 +412,27 @@ export default function InterviewSession() {
     }
   }, [state.messages.length, isAiThinking])
 
+  // Stop all speech + mic when interview ends; compute final score
+  useEffect(() => {
+    if (state.status === 'ended') {
+      interviewEndedRef.current = true
+
+      // Compute final score from question progress
+      const evaluations = Array.from(state.questionProgress.values())
+        .filter(p => p.evaluation)
+        .map(p => p.evaluation!)
+      const computed = evaluations.length > 0
+        ? Math.round(evaluations.reduce((sum, e) => sum + (e.finalScore ?? e.score), 0) / evaluations.length)
+        : null
+      setFinalScore(computed)
+    }
+  }, [state.status, state.questionProgress])
+
   // Start interview with AI-first approach (prevent double initialization)
   useEffect(() => {
-    let hasInitialized = false
-    
     async function startInterview() {
-      if (hasInitialized || state.status !== "idle") return
-      hasInitialized = true
+      if (hasStartedRef.current || state.status !== "idle") return
+      hasStartedRef.current = true
       
       setIsAiThinking(true) // Show loading state immediately
       
@@ -386,10 +480,12 @@ export default function InterviewSession() {
           setState({
             status: "active",
             currentQuestionIndex: 0,
+            totalQuestions: result.userSettings?.interviewLength || 5,
             questions: [], // AI manages questions, not pre-loaded
             messages: [greetingMessage, questionMessage],
             questionProgress: initialProgress,
             interviewConfig: config,
+            scoringMode: result.userSettings?.scoringMode || "deterministic",
           })
           
           setIsAiThinking(false)
@@ -427,6 +523,7 @@ export default function InterviewSession() {
         setState({
           status: "active",
           currentQuestionIndex: 0,
+          totalQuestions: 5, // Fallback default
           questions,
           messages: [firstQuestionMessage],
           questionProgress: progressMap,
@@ -472,6 +569,9 @@ export default function InterviewSession() {
     const currentQuestion = currentQuestionMessage?.content || "Please introduce yourself"
 
     try {
+      // Load user settings for scoring mode
+      const settings = loadSettings()
+      
       // Call hybrid AI + deterministic response endpoint
       const response = await fetch("/api/interview/respond", {
         method: "POST",
@@ -482,20 +582,29 @@ export default function InterviewSession() {
           sessionHistory,
           config: state.interviewConfig || { role: "general", type: "technical", difficulty: "medium" },
           questionIndex: state.currentQuestionIndex,
-          usedQuestions: [] // Managed by AI, not tracked client-side
+          usedQuestions: [], // Managed by AI, not tracked client-side
+          scoringMode: settings.scoringMode || "deterministic"
         }),
       })
 
       const data = await response.json()
 
       if (data.success) {
-        // Add feedback message
+        // Add feedback message with score breakdown
         const feedbackMessage: InterviewMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: data.evaluation.feedback,
           kind: "main",
-          meta: { type: "feedback" }
+          meta: { 
+            type: "feedback",
+            evaluation: {
+              overallScore: data.evaluation.overallScore || data.evaluation.finalScore || data.evaluation.score,
+              breakdown: data.evaluation.breakdown,
+              strengths: data.evaluation.strengths,
+              improvements: data.evaluation.improvements,
+            }
+          }
         }
 
         // Store evaluation in question progress
@@ -510,15 +619,19 @@ export default function InterviewSession() {
                 newProgress.set(currentQuestionId, {
                   ...newProgress.get(currentQuestionId)!,
                   evaluation: {
-                    score: data.evaluation.score,
+                    score: data.evaluation.finalScore ?? data.evaluation.score,
+                    deterministicScore: data.evaluation.deterministicScore,
+                    semanticScore: data.evaluation.semanticScore,
+                    finalScore: data.evaluation.finalScore ?? data.evaluation.score,
                     confidence: data.evaluation.breakdown.confidence,
                     clarity: data.evaluation.breakdown.clarity,
                     technical_depth: data.evaluation.breakdown.technical,
-                    strengths: [],
-                    improvements: [],
+                    strengths: data.evaluation.strengths ?? [],
+                    improvements: data.evaluation.improvements ?? [],
                     should_follow_up: false,
                     follow_up_focus: null
-                  }
+                  },
+                  metrics: data.metrics
                 })
               }
               
@@ -530,8 +643,9 @@ export default function InterviewSession() {
                 questionProgress: newProgress
               }
             })
-            // Speak the feedback
+            // Speak the feedback then a closing message
             speakText(data.evaluation.feedback)
+            speakText("Great work completing the interview! Your responses have been recorded. Keep practising and you'll do even better next time. Head to the dashboard to review your performance.")
           } else {
             // Continue with next question, update progress with evaluation
             const nextQuestionMessage: InterviewMessage = {
@@ -548,15 +662,19 @@ export default function InterviewSession() {
                 newProgress.set(currentQuestionId, {
                   ...newProgress.get(currentQuestionId)!,
                   evaluation: {
-                    score: data.evaluation.score,
+                    score: data.evaluation.finalScore ?? data.evaluation.score,
+                    deterministicScore: data.evaluation.deterministicScore,
+                    semanticScore: data.evaluation.semanticScore,
+                    finalScore: data.evaluation.finalScore ?? data.evaluation.score,
                     confidence: data.evaluation.breakdown.confidence,
                     clarity: data.evaluation.breakdown.clarity,
                     technical_depth: data.evaluation.breakdown.technical,
-                    strengths: [],
-                    improvements: [],
+                    strengths: data.evaluation.strengths ?? [],
+                    improvements: data.evaluation.improvements ?? [],
                     should_follow_up: false,
                     follow_up_focus: null
-                  }
+                  },
+                  metrics: data.metrics
                 })
               }
               
@@ -609,20 +727,35 @@ export default function InterviewSession() {
   }
 
   const endInterview = () => {
-    // Add thank you message from Zen AI
+    const closingText = "Great work completing the interview today! Your answers showed real potential. Keep practising and refining your explanations — you'll perform even better in real interviews. Best of luck with your career journey!"
     const thankYouMessage: InterviewMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: "Thank you for completing this interview session! I'm Zen AI, your InterviewAce assistant, and it was great working with you. Your responses have been recorded and you can view your performance in the dashboard. Best of luck with your career journey!",
+      content: closingText,
       kind: "main",
       meta: { type: "feedback" }
     }
-    
+
+    // Speak and add message to chat, but don't change status yet
+    // User will see the message and click "View Score" when ready
+    speakText(closingText)
+
     setState((prev) => ({
       ...prev,
       status: "ended",
       messages: [...prev.messages, thankYouMessage]
     }))
+  }
+
+  const viewScore = () => {
+    // Stop speech and show completion screen
+    stopSpeaking()
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch {}
+      isRecognitionActiveRef.current = false
+      setIsListening(false)
+    }
+    setShowCompletionScreen(true)
   }
 
   const handleSend = () => {
@@ -648,22 +781,29 @@ export default function InterviewSession() {
     )
   }
 
-  if (state.status === "ended") {
+  if (showCompletionScreen && state.status === "ended") {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-2xl font-bold text-white mb-4">
-            Interview Complete! 🎉
+        <div className="text-center max-w-md px-6">
+          <div className="text-4xl mb-4">🎉</div>
+          <div className="text-2xl font-bold text-white mb-3">
+            Interview Complete!
           </div>
-          <p className="text-neutral-400 mb-2">
-            Thank you for completing your interview session with Zen AI!
+          {finalScore !== null && (
+            <div className="mb-4">
+              <div className="text-5xl font-bold text-blue-400 mb-1">{finalScore}</div>
+              <div className="text-sm text-neutral-400">out of 100</div>
+            </div>
+          )}
+          <p className="text-neutral-300 mb-2">
+            Great work completing your session with Zen AI.
           </p>
           <p className="text-sm text-neutral-500 mb-6">
-            Your responses have been saved and you can review your performance analytics in the dashboard.
+            Your responses have been saved and are ready for review.
           </p>
           <button
             onClick={() => router.push("/dashboard")}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
           >
             Return to Dashboard
           </button>
@@ -673,71 +813,70 @@ export default function InterviewSession() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900">
-      <div className="flex flex-col h-screen">
-        {/* Header */}
-        <div className="flex-shrink-0 border-b border-neutral-700 bg-neutral-800 px-6 py-4">
-          <div className="flex items-center justify-between max-w-full">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-bold text-white truncate">Live Interview Session</h1>
-              <p className="text-sm text-neutral-400">
-                Question {state.currentQuestionIndex + 1} of {MAX_QUESTIONS} • Zen AI Interviewer
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={toggleVideo}
-                className={`p-2 rounded-lg border transition-colors ${
-                  isVideoEnabled 
-                    ? 'bg-green-600 hover:bg-green-700 border-green-500 text-white'
-                    : 'bg-neutral-700 hover:bg-neutral-600 border-neutral-600 text-neutral-300'
-                }`}
-              >
-                {isVideoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={endInterview}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-              >
-                End Interview
-              </button>
-            </div>
+    <div className="flex flex-col h-screen bg-neutral-900 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 border-b border-neutral-700 bg-neutral-800 px-6 py-4 z-10">
+        <div className="flex items-center justify-between max-w-full">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-white truncate">Live Interview Session</h1>
+            <p className="text-sm text-neutral-400">
+              Question {state.currentQuestionIndex + 1} of {state.totalQuestions + 1} • Zen AI Interviewer
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={toggleVideo}
+              className={`p-2 rounded-lg border transition-colors ${
+                isVideoEnabled 
+                  ? 'bg-green-600 hover:bg-green-700 border-green-500 text-white'
+                  : 'bg-neutral-700 hover:bg-neutral-600 border-neutral-600 text-neutral-300'
+              }`}
+              title={isVideoEnabled ? 'Disable video' : 'Enable video'}
+            >
+              {isVideoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={endInterview}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+            >
+              End Interview
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Main Interview Area */}
-        <div className="flex-1 flex">
-          {/* Left Panel - Video & Controls */}
-          <div className="w-80 border-r border-neutral-700 bg-neutral-800 p-4">
+      {/* Main Interview Area - Fixed Height */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Left Panel - Video & Controls (Fixed, Scrollable) */}
+        <div className="w-80 border-r border-neutral-700 bg-neutral-800 flex-shrink-0 overflow-y-auto">
+          <div className="p-4 space-y-4">
             {/* Camera View */}
-            <div className="mb-4">
-              <div className="aspect-[4/3] bg-neutral-900 rounded-lg border-2 border-dashed border-neutral-600 flex items-center justify-center relative">
-                {isVideoEnabled ? (
-                  <div className="text-center">
-                    <Camera className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
-                    <p className="text-sm text-neutral-400">Camera Preview</p>
-                    <p className="text-xs text-neutral-500">Your video feed will appear here</p>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    <VideoOff className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
-                    <p className="text-sm text-neutral-400">Camera Off</p>
-                  </div>
-                )}
-              </div>
+            <div className="aspect-[4/3] bg-neutral-900 rounded-lg border-2 border-dashed border-neutral-600 flex items-center justify-center flex-shrink-0">
+              {isVideoEnabled ? (
+                <div className="text-center">
+                  <Camera className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
+                  <p className="text-sm text-neutral-400">Camera Preview</p>
+                  <p className="text-xs text-neutral-500">Your video feed will appear here</p>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <VideoOff className="w-12 h-12 text-neutral-500 mx-auto mb-2" />
+                  <p className="text-sm text-neutral-400">Camera Off</p>
+                </div>
+              )}
             </div>
             
             {/* Interview Progress */}
-            <div className="mb-4 p-3 bg-neutral-900 rounded-lg">
+            <div className="p-3 bg-neutral-900 rounded-lg">
               <h3 className="text-sm font-medium text-white mb-2">Progress</h3>
               <div className="flex justify-between text-sm text-neutral-400 mb-1">
                 <span>Question {state.currentQuestionIndex + 1}</span>
-                <span>{MAX_QUESTIONS} Total</span>
+                <span>{state.totalQuestions + 1} Total</span>
               </div>
               <div className="w-full bg-neutral-700 rounded-full h-2">
                 <div 
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${((state.currentQuestionIndex + 1) / MAX_QUESTIONS) * 100}%` }}
+                  style={{ width: `${((state.currentQuestionIndex + 1) / (state.totalQuestions + 1)) * 100}%` }}
                 ></div>
               </div>
             </div>
@@ -753,11 +892,13 @@ export default function InterviewSession() {
               </ul>
             </div>
           </div>
-          
-          {/* Right Panel - Conversation */}
-          <div className="flex-1 flex flex-col">
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-6">
+        </div>
+        
+        {/* Right Panel - Conversation (Independent Scroll) */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Messages Area - Scrollable */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 scroll-smooth">
+            <div className="max-w-4xl mx-auto space-y-6">
               <div className="max-w-4xl mx-auto space-y-6">
                 {state.messages.map((message) => (
                   <div
@@ -789,6 +930,61 @@ export default function InterviewSession() {
                           <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
                             {message.content}
                           </p>
+                          
+                          {/* Score Breakdown for Feedback Messages */}
+                          {message.meta?.type === 'feedback' && message.meta.evaluation && (
+                            <div className="mt-4 pt-4 border-t border-green-700">
+                              <div className="mb-3">
+                                <div className="text-sm font-semibold text-green-300 mb-1">
+                                  Score: {message.meta.evaluation.overallScore}/100
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-green-200">Technical:</span>
+                                    <span className="font-medium">{message.meta.evaluation.breakdown.technical}/10</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-green-200">Clarity:</span>
+                                    <span className="font-medium">{message.meta.evaluation.breakdown.clarity}/10</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-green-200">Confidence:</span>
+                                    <span className="font-medium">{message.meta.evaluation.breakdown.confidence}/10</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-green-200">Relevance:</span>
+                                    <span className="font-medium">{message.meta.evaluation.breakdown.relevance}/10</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-green-200">Structure:</span>
+                                    <span className="font-medium">{message.meta.evaluation.breakdown.structure}/10</span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {message.meta.evaluation.strengths && message.meta.evaluation.strengths.length > 0 && (
+                                <div className="mb-2">
+                                  <div className="text-xs font-semibold text-green-300 mb-1">✓ Strengths:</div>
+                                  <ul className="text-xs text-green-100 space-y-0.5 ml-3">
+                                    {message.meta.evaluation.strengths.map((strength, idx) => (
+                                      <li key={idx}>• {strength}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {message.meta.evaluation.improvements && message.meta.evaluation.improvements.length > 0 && (
+                                <div>
+                                  <div className="text-xs font-semibold text-yellow-300 mb-1">⚡ Improvements:</div>
+                                  <ul className="text-xs text-green-100 space-y-0.5 ml-3">
+                                    {message.meta.evaluation.improvements.map((improvement, idx) => (
+                                      <li key={idx}>• {improvement}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       {message.role === "user" && (
@@ -822,9 +1018,23 @@ export default function InterviewSession() {
               </div>
             </div>
 
-            {/* Input Area */}
-            <div className="border-t border-neutral-700 bg-neutral-800 px-6 py-4">
+            {/* Fixed Input Area */}
+            <div className="flex-shrink-0 border-t border-neutral-700 bg-neutral-800 px-6 py-4">
               <div className="max-w-4xl mx-auto">
+                {state.status === "ended" ? (
+                  <div className="text-center py-6">
+                    <p className="text-neutral-300 mb-4 text-lg">
+                      The interview has concluded. See your performance summary below.
+                    </p>
+                    <button
+                      onClick={viewScore}
+                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all shadow-lg hover:shadow-xl"
+                    >
+                      📊 View Score & Results
+                    </button>
+                  </div>
+                ) : (
+                  <>
                 <div className="flex gap-3 mb-3">
                   <textarea
                     value={input}
@@ -892,6 +1102,8 @@ export default function InterviewSession() {
                   <div className="text-xs text-neutral-500">
                     💡 Voice input not supported in this browser. Try Chrome or Edge for the best experience.
                   </div>
+                )}
+                </>
                 )}
               </div>
             </div>

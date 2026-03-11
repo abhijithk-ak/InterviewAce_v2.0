@@ -5,7 +5,7 @@
  * Run: npx tsx src/lib/evaluation/__tests__/demo.ts
  */
 
-import { evaluateAnswer } from "../engine"
+import { evaluateAnswerSync } from "../engine"
 import { DOMAIN_KEYWORDS } from "../keywords"
 
 console.log("=".repeat(80))
@@ -27,7 +27,7 @@ For optimization, I used cleanup functions to prevent memory leaks. In one proje
 I optimized performance by using useMemo alongside useEffect to avoid unnecessary re-renders.
 `
 
-const result1 = evaluateAnswer(question1, answer1, {
+const result1 = evaluateAnswerSync(question1, answer1, {
   role: "frontend",
   type: "technical",
   difficulty: "medium"
@@ -71,7 +71,7 @@ I think SQL is like a database that uses tables and stuff. NoSQL is maybe differ
 I'm not sure exactly how they work but I guess SQL is older.
 `
 
-const result2 = evaluateAnswer(question2, answer2, {
+const result2 = evaluateAnswerSync(question2, answer2, {
   role: "backend",
   type: "technical",
   difficulty: "easy"
@@ -119,7 +119,7 @@ in our runbook to prevent future occurrences. This experience taught me the impo
 of proactive monitoring and proper database indexing.
 `
 
-const result3 = evaluateAnswer(question3, answer3, {
+const result3 = evaluateAnswerSync(question3, answer3, {
   role: "fullstack",
   type: "behavioral",
   difficulty: "medium"

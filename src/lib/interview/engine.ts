@@ -3,7 +3,7 @@
  * Coordinates evaluation, AI, and question flow with greetings
  */
 
-import { evaluateAnswer } from "@/lib/evaluation"
+import { evaluateAnswerSync } from "@/lib/evaluation"
 import { callAI } from "@/lib/ai/client"
 import { selectQuestions } from "@/lib/questions/bank"
 
@@ -92,7 +92,7 @@ export async function processAnswer({
   })
 
   // 1. Always run algorithmic evaluation first (deterministic baseline)
-  const algorithmResult = evaluateAnswer(question, answer, {
+  const algorithmResult = evaluateAnswerSync(question, answer, {
     role: config.role,
     type: config.type,
     difficulty: config.difficulty
@@ -178,7 +178,7 @@ export function debugInterviewSystem() {
   const checks = {
     aiKeyLoaded: !!process.env.OPENROUTER_API_KEY,
     aiKeyPrefix: process.env.OPENROUTER_API_KEY?.substring(0, 10) + "...",
-    evaluationAvailable: typeof evaluateAnswer === 'function',
+    evaluationAvailable: typeof evaluateAnswerSync === 'function',
     questionsAvailable: true
   }
   

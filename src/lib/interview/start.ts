@@ -27,7 +27,12 @@ export interface StartResult {
 /**
  * Start interview session (AI-first approach)
  */
-export async function startInterview(config: InterviewConfig, userName?: string): Promise<StartResult> {
+export async function startInterview(
+  config: InterviewConfig, 
+  userName?: string,
+  aiModel?: string,
+  aiTemperature?: number
+): Promise<StartResult> {
   const debug = {
     aiAttempted: false,
     aiSuccess: false,
@@ -40,9 +45,13 @@ export async function startInterview(config: InterviewConfig, userName?: string)
     
     try {
       console.log("🤖 Attempting AI session start...")
+      console.log(`📋 Using model: ${aiModel || 'default'}, temperature: ${aiTemperature || 0.4}`)
       
       const prompt = buildStartPrompt(config, userName)
-      const aiResponse = await callAI(prompt)
+      const aiResponse = await callAI(prompt, {
+        model: aiModel,
+        temperature: aiTemperature
+      })
       
       if (aiResponse && validateStartResponse(aiResponse)) {
         console.log("✅ AI session start successful")

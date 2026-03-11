@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/layout/sidebar"
+import { PageTransition } from "@/components/layout/PageTransition"
 
 export default function AppLayout({
   children,
@@ -6,12 +7,12 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-screen bg-neutral-900">
+    <div className="flex h-screen bg-neutral-950">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="h-full">
+      <main className="flex-1 overflow-y-auto bg-neutral-950">
+        <PageTransition>
           {children}
-        </div>
+        </PageTransition>
       </main>
     </div>
   )

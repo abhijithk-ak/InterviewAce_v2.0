@@ -29,13 +29,27 @@ type SessionData = {
     text: string
     answer: string
     evaluation: {
-      score: number
-      technical_depth: number
-      clarity: number
-      confidence: number
-      strengths: string[]
-      improvements: string[]
-      feedback: string
+      /** Legacy score (backward compat) */
+      score?: number
+      deterministicScore?: number
+      semanticScore?: number
+      /** Official score — use this for display */
+      finalScore?: number
+      technical_depth?: number
+      clarity?: number
+      confidence?: number
+      strengths?: string[]
+      improvements?: string[]
+      feedback?: string
+    }
+    /** Experiment metrics for research graphs */
+    metrics?: {
+      deterministicScore: number
+      semanticScore: number
+      finalScore: number
+      answerLength: number
+      responseTime: number
+      timestamp: string
     }
   }>
   overallScore: number
@@ -195,7 +209,7 @@ export default function SessionDetailPage() {
                       Question {idx + 1}
                     </span>
                     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded">
-                      Score: {question.evaluation.score}/10
+                      Score: {question.evaluation.finalScore ?? question.evaluation.score ?? 0}/10
                     </span>
                   </div>
                   <h3 className="text-lg font-medium text-neutral-900">
@@ -221,13 +235,13 @@ export default function SessionDetailPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-neutral-600">Technical Depth</span>
                       <span className="text-sm font-semibold text-neutral-900">
-                        {normalizeScore(question.evaluation.technical_depth)}/10
+                        {normalizeScore(question.evaluation.technical_depth ?? 0)}/10
                       </span>
                     </div>
                     <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-blue-600 rounded-full"
-                        style={{ width: `${(normalizeScore(question.evaluation.technical_depth) / 10) * 100}%` }}
+                        style={{ width: `${(normalizeScore(question.evaluation.technical_depth ?? 0) / 10) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -236,13 +250,13 @@ export default function SessionDetailPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-neutral-600">Clarity</span>
                       <span className="text-sm font-semibold text-neutral-900">
-                        {normalizeScore(question.evaluation.clarity)}/10
+                        {normalizeScore(question.evaluation.clarity ?? 0)}/10
                       </span>
                     </div>
                     <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-green-600 rounded-full"
-                        style={{ width: `${(normalizeScore(question.evaluation.clarity) / 10) * 100}%` }}
+                        style={{ width: `${(normalizeScore(question.evaluation.clarity ?? 0) / 10) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -251,13 +265,13 @@ export default function SessionDetailPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-neutral-600">Confidence</span>
                       <span className="text-sm font-semibold text-neutral-900">
-                        {normalizeScore(question.evaluation.confidence)}/10
+                        {normalizeScore(question.evaluation.confidence ?? 0)}/10
                       </span>
                     </div>
                     <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-purple-600 rounded-full"
-                        style={{ width: `${(normalizeScore(question.evaluation.confidence) / 10) * 100}%` }}
+                        style={{ width: `${(normalizeScore(question.evaluation.confidence ?? 0) / 10) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -280,7 +294,7 @@ export default function SessionDetailPage() {
                     Strengths
                   </h4>
                   <ul className="space-y-2">
-                    {question.evaluation.strengths.map((strength, i) => (
+                    {(question.evaluation.strengths ?? []).map((strength, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
                         <span className="text-green-600 mt-0.5">✓</span>
                         <span>{strength}</span>
@@ -295,7 +309,7 @@ export default function SessionDetailPage() {
                     Areas for Improvement
                   </h4>
                   <ul className="space-y-2">
-                    {question.evaluation.improvements.map((improvement, i) => (
+                    {(question.evaluation.improvements ?? []).map((improvement, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
                         <span className="text-orange-600 mt-0.5">→</span>
                         <span>{improvement}</span>

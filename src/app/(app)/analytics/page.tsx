@@ -1,11 +1,15 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { BarChart2, TrendingUp, Award, Target, Clock, CheckCircle, Calendar, Play, BookOpen } from "lucide-react"
+import { BarChart2, TrendingUp, Award, Clock, Zap, Play, BookOpen, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
 import { ScoreTrendChart, SkillBreakdownChart, SessionTypeChart } from "@/components/charts"
+
+// Always fetch fresh data — never use cached analytics
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 type AnalyticsData = {
   totalSessions: number
@@ -23,6 +27,7 @@ type AnalyticsData = {
     technical: number
     behavioral: number
     'system-design': number
+    hr: number
   }
   difficultyBreakdown: {
     easy: number
@@ -39,6 +44,8 @@ type AnalyticsData = {
     startedAt: string
     overallScore?: number
   }>
+  improvement: number
+  successRate: number
 }
 
 async function getAnalyticsData(userEmail: string) {
@@ -112,23 +119,19 @@ async function getAnalyticsData(userEmail: string) {
       })
     })
 
+    // Subscores are stored on 0-10 scale; multiply by 10 for 0-100 percentage display
+    const avg10 = (arr: number[]) =>
+      arr.length > 0 ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0
     const skillBreakdown = {
-      technical: skillData.technical.length > 0 
-        ? Math.round((skillData.technical.reduce((a, b) => a + b, 0) / skillData.technical.length) * 10) / 10
-        : 5.0,
-      communication: skillData.communication.length > 0 
-        ? Math.round((skillData.communication.reduce((a, b) => a + b, 0) / skillData.communication.length) * 10) / 10
-        : 5.0,
-      confidence: skillData.confidence.length > 0 
-        ? Math.round((skillData.confidence.reduce((a, b) => a + b, 0) / skillData.confidence.length) * 10) / 10
-        : 5.0,
-      clarity: skillData.clarity.length > 0 
-        ? Math.round((skillData.clarity.reduce((a, b) => a + b, 0) / skillData.clarity.length) * 10) / 10
-        : 5.0
+      technical:     Math.round(avg10(skillData.technical)     * 10),
+      communication: Math.round(avg10(skillData.communication) * 10),
+      confidence:    Math.round(avg10(skillData.confidence)    * 10),
+      clarity:       Math.round(avg10(skillData.clarity)       * 10),
     }
 
-    // Calculate score trend over time (last 10 sessions)
-    const recentSessions = sessions.slice(0, 10).reverse()
+    // Score trend — oldest → newest, overallScore is already 0-100
+    const trendSessions = sessions.filter(s => s.overallScore != null)
+    const recentSessions = trendSessions.slice(0, 10).reverse()
     const scoreTrend = recentSessions.map((session) => ({
       date: session.startedAt.toISOString(),
       score: session.overallScore || 0
@@ -140,7 +143,7 @@ async function getAnalyticsData(userEmail: string) {
       technical: 0,
       behavioral: 0,
       'system-design': 0,
-      hr: 0
+      hr: 0,
     }
 
     const difficultyBreakdown = {
@@ -152,11 +155,11 @@ async function getAnalyticsData(userEmail: string) {
     // Safely aggregate with normalization
     sessions.forEach(session => {
       if (session.config) {
-        // Normalize type (handle both "Technical" and "technical")
-        const type = session.config.type?.toLowerCase().trim()
+        // Normalize type — handles both "Technical" and "technical", "HR" and "hr"
+        const type = session.config.type?.toLowerCase().trim().replace(/[\s_]+/g, '-')
         if (type === 'technical') sessionsByType.technical++
-        else if (type === 'behavioral') sessionsByType.behavioral++
-        else if (type === 'system-design' || type === 'systemdesign') sessionsByType['system-design']++
+        else if (type === 'behavioral' || type === 'behavioural') sessionsByType.behavioral++
+        else if (type === 'system-design' || type === 'systemdesign' || type === 'system_design') sessionsByType['system-design']++
         else if (type === 'hr') sessionsByType.hr++
 
         // Normalize difficulty (handle both "Medium" and "medium")
@@ -178,6 +181,17 @@ async function getAnalyticsData(userEmail: string) {
       overallScore: session.overallScore
     }))
 
+    // Improvement: diff between latest and first session score
+    const trendWithScore = sessions.filter(s => s.overallScore != null)
+    const improvement = trendWithScore.length >= 2
+      ? (trendWithScore[0].overallScore ?? 0) - (trendWithScore[trendWithScore.length - 1].overallScore ?? 0)
+      : 0
+
+    // Success rate: sessions scoring >= 70
+    const successRate = totalSessions > 0
+      ? Math.round((sessions.filter(s => (s.overallScore ?? 0) >= 70).length / totalSessions) * 100)
+      : 0
+
     const analytics: AnalyticsData = {
       totalSessions,
       averageScore,
@@ -187,7 +201,9 @@ async function getAnalyticsData(userEmail: string) {
       scoreTrend,
       sessionsByType,
       difficultyBreakdown,
-      recentSessions: formattedRecentSessions
+      recentSessions: formattedRecentSessions,
+      improvement,
+      successRate,
     }
     
     return {
@@ -203,13 +219,13 @@ async function getAnalyticsData(userEmail: string) {
 
 export default async function AnalyticsPage() {
   const session = await auth()
-  
+
   if (!session?.user?.email) {
     redirect('/login')
   }
 
   const analyticsData = await getAnalyticsData(session.user.email)
-  
+
   if (!analyticsData) {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
@@ -218,334 +234,300 @@ export default async function AnalyticsPage() {
     )
   }
 
-  const { profile, analytics, totalSessions } = analyticsData
+  const { analytics, totalSessions } = analyticsData
+
+  const TYPE_META: Record<string, { label: string; icon: string; color: string }> = {
+    technical:      { label: 'Technical',    icon: '</>', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+    behavioral:     { label: 'Behavioral',   icon: '💬',  color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+    'system-design':{ label: 'System Design',icon: '🏗️', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+    hr:             { label: 'HR',           icon: '🎯',  color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
+  }
+
+  const SKILL_META: Record<string, { color: string; dot: string }> = {
+    technical:     { color: 'text-indigo-400', dot: 'bg-indigo-500' },
+    communication: { color: 'text-emerald-400', dot: 'bg-emerald-500' },
+    confidence:    { color: 'text-amber-400',   dot: 'bg-amber-500' },
+    clarity:       { color: 'text-purple-400',  dot: 'bg-purple-500' },
+  }
 
   return (
-    <div className="min-h-screen bg-neutral-900">
-      <div className="max-w-7xl mx-auto p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-            <BarChart2 className="h-8 w-8 text-blue-400" />
-            Performance Analytics
-          </h1>
-          <p className="text-neutral-400">
-            {totalSessions === 0 
-              ? "Complete your first interview to see detailed analytics and insights" 
-              : `Insights from ${totalSessions} completed interview sessions`}
-          </p>
+    <div className="min-h-screen bg-neutral-950">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
+              <BarChart2 className="h-6 w-6 text-indigo-400" />
+              Performance Analytics
+            </h1>
+            <p className="text-neutral-500 text-sm mt-1">
+              {totalSessions === 0
+                ? 'Complete your first interview to see insights'
+                : `Insights from ${totalSessions} completed session${totalSessions > 1 ? 's' : ''}`}
+            </p>
+          </div>
+          <Link href="/interview/setup">
+            <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              <Play className="w-4 h-4" /> New Session
+            </button>
+          </Link>
         </div>
 
         {totalSessions === 0 ? (
-          // New User Experience
-          <div className="space-y-8">
-            {/* Empty State */}
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <BarChart2 className="w-10 h-10 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-medium text-white mb-4">No Analytics Yet</h3>
-              <p className="text-neutral-400 mb-6 max-w-md mx-auto">
-                Complete your first interview session to unlock detailed analytics, performance trends, and personalized insights.
-              </p>
-              <Link href="/interview/setup">
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors">
-                  Start First Interview
-                </button>
-              </Link>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-16 text-center">
+            <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <BarChart2 className="w-8 h-8 text-indigo-400" />
             </div>
-
-            {/* Preview of what they'll get */}
-            <div className="bg-neutral-800 rounded-lg p-8 border border-neutral-700">
-              <h3 className="text-lg font-semibold text-white mb-4">What You'll See After Your First Session</h3>
-              <div className="grid md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
-                    <TrendingUp className="w-6 h-6 text-green-400" />
-                  </div>
-                  <h4 className="font-medium text-white mb-2">Performance Trends</h4>
-                  <p className="text-neutral-400 text-sm">Track your improvement over time with detailed score analysis</p>
-                </div>
-
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
-                    <Target className="w-6 h-6 text-purple-400" />
-                  </div>
-                  <h4 className="font-medium text-white mb-2">Skill Breakdown</h4>
-                  <p className="text-neutral-400 text-sm">Identify strengths and areas for improvement across different skills</p>
-                </div>
-
-                <div className="text-center">
-                  <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center mx-auto mb-3">
-                    <Award className="w-6 h-6 text-yellow-400" />
-                  </div>
-                  <h4 className="font-medium text-white mb-2">Detailed Insights</h4>
-                  <p className="text-neutral-400 text-sm">Get personalized recommendations and performance comparisons</p>
-                </div>
-              </div>
-            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No analytics yet</h3>
+            <p className="text-neutral-500 text-sm max-w-sm mx-auto mb-6">
+              Complete your first interview session to unlock performance trends, skill breakdowns, and personalized insights.
+            </p>
+            <Link href="/interview/setup">
+              <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-colors">
+                Start First Interview
+              </button>
+            </Link>
           </div>
         ) : (
-          // Existing User Experience with Real Analytics
-          <div className="space-y-8">
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Total Sessions</span>
-                  <Calendar className="w-5 h-5 text-blue-400" />
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{analytics!.totalSessions}</div>
-                <div className="text-sm text-neutral-500">completed</div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Average Score</span>
-                  <TrendingUp className="w-5 h-5 text-green-400" />
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{analytics!.averageScore}%</div>
-                <div className="text-sm text-neutral-500">performance</div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Best Score</span>
-                  <Award className="w-5 h-5 text-yellow-400" />
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{analytics!.bestScore}%</div>
-                <div className="text-sm text-neutral-500">personal best</div>
-              </div>
-
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-400">Avg Duration</span>
-                  <Clock className="w-5 h-5 text-purple-400" />
-                </div>
-                <div className="text-3xl font-bold text-white mb-1">{analytics!.avgDuration}</div>
-                <div className="text-sm text-neutral-500">minutes</div>
-              </div>
-            </div>
-
-            {/* Skills Breakdown */}
-            <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Skill Performance</h2>
-                <span className="text-sm text-neutral-400">Current levels out of 100</span>
-              </div>
-              <div className="grid lg:grid-cols-2 gap-8">
-                <div>
-                  <SkillBreakdownChart data={analytics!.skillBreakdown} height={300} />
-                </div>
-                <div className="space-y-4">
-                  {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => (
-                    <div key={skill} className="flex items-center justify-between p-4 bg-neutral-900 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded-full ${
-                          skill === 'technical' ? 'bg-blue-500' :
-                          skill === 'communication' ? 'bg-green-500' :
-                          skill === 'confidence' ? 'bg-yellow-500' : 'bg-purple-500'
-                        }`} />
-                        <span className="text-white font-medium capitalize">{skill}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-xl font-bold ${
-                          score >= 8 ? 'text-green-400' :
-                          score >= 6 ? 'text-yellow-400' : 'text-red-400'
-                        }`}>
-                          {Math.round(score * 10)}/100
-                        </div>
-                        <div className="text-sm text-neutral-400">
-                          {score >= 8 ? 'Excellent' : score >= 6 ? 'Good' : 'Needs Work'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Performance Trend */}
-            <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Score Progression Over Time</h2>
-                <span className="text-sm text-neutral-400">Last {analytics!.scoreTrend.length} sessions</span>
-              </div>
-              {analytics!.scoreTrend.length > 0 ? (
-                <ScoreTrendChart data={analytics!.scoreTrend} height={350} />
-              ) : (
-                <div className="flex items-center justify-center h-[350px] text-neutral-400">
-                  <div className="text-center">
-                    <div className="text-2xl mb-2">📊</div>
-                    <p className="text-sm">Complete more sessions to see progress trends</p>
+          <>
+            {/* ── KPI row ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                {
+                  label: 'Total Sessions',
+                  value: String(analytics!.totalSessions),
+                  sub: 'completed',
+                  icon: <BarChart2 className="w-5 h-5 text-indigo-400" />,
+                  accent: 'text-indigo-400',
+                  badge: null,
+                },
+                {
+                  label: 'Average Score',
+                  value: `${analytics!.averageScore}%`,
+                  sub: 'all sessions',
+                  icon: <TrendingUp className="w-5 h-5 text-emerald-400" />,
+                  accent: analytics!.averageScore >= 70 ? 'text-emerald-400' : analytics!.averageScore >= 50 ? 'text-amber-400' : 'text-red-400',
+                  badge: null,
+                },
+                {
+                  label: 'Best Score',
+                  value: `${analytics!.bestScore}%`,
+                  sub: 'personal best',
+                  icon: <Award className="w-5 h-5 text-amber-400" />,
+                  accent: 'text-amber-400',
+                  badge: null,
+                },
+                {
+                  label: 'Improvement',
+                  value: analytics!.improvement === 0 ? '—' : `${analytics!.improvement > 0 ? '+' : ''}${analytics!.improvement}%`,
+                  sub: 'vs first session',
+                  icon: analytics!.improvement > 0
+                    ? <ArrowUpRight className="w-5 h-5 text-emerald-400" />
+                    : analytics!.improvement < 0
+                    ? <ArrowDownRight className="w-5 h-5 text-red-400" />
+                    : <Minus className="w-5 h-5 text-neutral-400" />,
+                  accent: analytics!.improvement > 0 ? 'text-emerald-400' : analytics!.improvement < 0 ? 'text-red-400' : 'text-neutral-400',
+                  badge: null,
+                },
+              ].map((kpi) => (
+                <div key={kpi.label} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">{kpi.label}</span>
+                    {kpi.icon}
                   </div>
+                  <div className={`text-3xl font-bold ${kpi.accent} mb-1`}>{kpi.value}</div>
+                  <div className="text-xs text-neutral-600">{kpi.sub}</div>
                 </div>
-              )}
+              ))}
             </div>
 
-            {/* Session Breakdowns - Improved Layout */}
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Session Types Distribution */}
-              <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-white">Session Distribution</h2>
-                  <span className="text-sm text-neutral-400">{totalSessions} total</span>
+            {/* ── Score Progression + Skill Radar side-by-side ── */}
+            <div className="grid lg:grid-cols-5 gap-4">
+              {/* Score Trend — wider */}
+              <div className="lg:col-span-3 bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Score Progression</h2>
+                  <span className="text-xs text-neutral-500 bg-neutral-800 border border-neutral-700 px-2.5 py-1 rounded-full">
+                    Last {analytics!.scoreTrend.length} sessions
+                  </span>
                 </div>
-                <div className="mb-6">
-                  <SessionTypeChart data={analytics!.sessionsByType} height={260} />
+                <ScoreTrendChart data={analytics!.scoreTrend} height={260} />
+              </div>
+
+              {/* Skill Radar */}
+              <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Skill Radar</h2>
+                  <span className="text-xs text-neutral-500">0 – 100</span>
                 </div>
-                <div className="space-y-3">
-                  {Object.entries(analytics!.sessionsByType).map(([type, count]) => (
-                    <div key={type} className="flex items-center justify-between p-3 bg-neutral-900 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">
-                          {type === 'technical' ? '</>' : 
-                           type === 'behavioral' ? '💬' : 
-                           type === 'system-design' ? '🏗️' : '🎯'}
-                        </span>
-                        <span className="text-white font-medium capitalize">
-                          {type === 'system-design' ? 'System Design' : type}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-blue-400">{count}</div>
-                        <div className="text-xs text-neutral-500">
-                          {Math.round((count / totalSessions) * 100)}%
+                <SkillBreakdownChart data={analytics!.skillBreakdown} height={260} />
+              </div>
+            </div>
+
+            {/* ── Skill bars ── */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+              <h2 className="text-base font-semibold text-white mb-5">Skill Breakdown</h2>
+              <div className="grid md:grid-cols-2 gap-x-10 gap-y-5">
+                {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => {
+                  const meta = SKILL_META[skill] ?? { color: 'text-neutral-300', dot: 'bg-neutral-500' }
+                  const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : 'Needs Work'
+                  return (
+                    <div key={skill}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
+                          <span className="text-sm font-medium text-neutral-200 capitalize">{skill}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-bold ${meta.color}`}>{score}%</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                            score >= 80 ? 'bg-emerald-500/15 text-emerald-400' :
+                            score >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'
+                          }`}>{label}</span>
                         </div>
                       </div>
+                      <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${meta.dot}`}
+                          style={{ width: `${Math.min(score, 100)}%` }}
+                        />
+                      </div>
                     </div>
-                  ))}
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* ── Session Distribution + Difficulty side-by-side ── */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              {/* Session type donut */}
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Session Distribution</h2>
+                  <span className="text-xs text-neutral-500 bg-neutral-800 border border-neutral-700 px-2.5 py-1 rounded-full">
+                    {totalSessions} total
+                  </span>
+                </div>
+                <SessionTypeChart data={analytics!.sessionsByType} height={220} />
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  {Object.entries(analytics!.sessionsByType).map(([type, count]) => {
+                    const m = TYPE_META[type]
+                    const pct = totalSessions > 0 ? Math.round((count / totalSessions) * 100) : 0
+                    return (
+                      <div key={type} className={`flex items-center justify-between p-2.5 rounded-lg border ${m.color}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{m.icon}</span>
+                          <span className="text-xs font-medium">{m.label}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-white text-sm font-bold">{count}</span>
+                          <span className="text-neutral-500 text-xs ml-1">({pct}%)</span>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Difficulty Levels & Performance Stats */}
-              <div className="space-y-6">
-                {/* Difficulty Distribution */}
-                <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-                  <h2 className="text-lg font-semibold text-white mb-6">Difficulty Levels</h2>
+              {/* Difficulty + quick stats */}
+              <div className="space-y-4">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                  <h2 className="text-base font-semibold text-white mb-5">Difficulty Levels</h2>
                   <div className="space-y-4">
-                    {Object.entries(analytics!.difficultyBreakdown).map(([difficulty, count]) => (
-                      <div key={difficulty} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className={`w-4 h-4 rounded-full ${
-                              difficulty === 'hard' ? 'bg-red-400' :
-                              difficulty === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
-                            }`} />
-                            <span className="text-neutral-200 capitalize font-medium">{difficulty}</span>
+                    {Object.entries(analytics!.difficultyBreakdown).map(([d, count]) => {
+                      const pct = totalSessions > 0 ? Math.round((count / totalSessions) * 100) : 0
+                      const cls = d === 'hard' ? { dot: 'bg-red-500', bar: 'bg-red-500', text: 'text-red-400' }
+                                : d === 'medium' ? { dot: 'bg-amber-500', bar: 'bg-amber-500', text: 'text-amber-400' }
+                                : { dot: 'bg-emerald-500', bar: 'bg-emerald-500', text: 'text-emerald-400' }
+                      return (
+                        <div key={d}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2.5 h-2.5 rounded-full ${cls.dot}`} />
+                              <span className="text-sm text-neutral-200 capitalize font-medium">{d}</span>
+                            </div>
+                            <div className={`text-sm font-bold ${cls.text}`}>{count} <span className="text-neutral-500 font-normal text-xs">({pct}%)</span></div>
                           </div>
-                          <div className="text-right">
-                            <span className="text-white font-bold text-lg">{count}</span>
-                            <span className="text-neutral-400 text-sm ml-2">
-                              ({Math.round((count / totalSessions) * 100)}%)
-                            </span>
+                          <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                            <div className={`h-full ${cls.bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
                           </div>
                         </div>
-                        <div className="bg-neutral-700 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-500 ${
-                              difficulty === 'hard' ? 'bg-red-400' :
-                              difficulty === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
-                            }`}
-                            style={{ width: `${(count / Math.max(1, totalSessions)) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
 
-                {/* Quick Performance Stats */}
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                    <div className="text-sm text-neutral-400 mb-1">Success Rate</div>
-                    <div className="text-2xl font-bold text-green-400">
-                      {Math.round((analytics!.recentSessions.filter(s => (s.overallScore || 0) >= 70).length / Math.max(1, analytics!.recentSessions.length)) * 100)}%
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+                    <div className="text-xs text-neutral-500 mb-2 flex items-center gap-1">
+                      <Zap className="w-3 h-3" /> Success Rate
                     </div>
-                    <div className="text-xs text-neutral-500">Sessions &gt;70%</div>
+                    <div className="text-2xl font-bold text-emerald-400">{analytics!.successRate}%</div>
+                    <div className="text-xs text-neutral-600 mt-1">Sessions ≥ 70%</div>
                   </div>
-                  
-                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">  
-                    <div className="text-sm text-neutral-400 mb-1">Improvement</div>
-                    <div className="text-2xl font-bold text-blue-400">
-                      {analytics!.scoreTrend.length >= 2 ? 
-                        (analytics!.scoreTrend[analytics!.scoreTrend.length - 1].score - analytics!.scoreTrend[0].score > 0 ? '+' : '') +
-                        Math.round(analytics!.scoreTrend[analytics!.scoreTrend.length - 1].score - analytics!.scoreTrend[0].score) + '%'
-                        : 'N/A'
-                      }
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+                    <div className="text-xs text-neutral-500 mb-2 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Avg Duration
                     </div>
-                    <div className="text-xs text-neutral-500">Since first session</div>
-                  </div>
-
-                  <div className="bg-neutral-800 rounded-lg p-4 border border-neutral-700">
-                    <div className="text-sm text-neutral-400 mb-1">Consistency</div>
-                    <div className="text-2xl font-bold text-purple-400">
-                      {analytics!.scoreTrend.length >= 3 ? 
-                        Math.max(0, Math.round(100 - (Math.max(...analytics!.scoreTrend.map(s => s.score)) - Math.min(...analytics!.scoreTrend.map(s => s.score)))))
-                        : 'N/A'
-                      }%
-                    </div>
-                    <div className="text-xs text-neutral-500">Score stability</div>
+                    <div className="text-2xl font-bold text-purple-400">{analytics!.avgDuration}<span className="text-sm font-normal text-neutral-500 ml-1">min</span></div>
+                    <div className="text-xs text-neutral-600 mt-1">Per session</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Recent Sessions */}
-            <div className="bg-neutral-800 rounded-lg p-6 border border-neutral-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Recent Sessions</h2>
-                <Link href="/sessions" className="text-blue-400 hover:text-blue-300 text-sm">
-                  View all sessions →
+            {/* ── Recent Sessions ── */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-base font-semibold text-white">Recent Sessions</h2>
+                <Link href="/sessions" className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                  View all <ArrowUpRight className="w-3 h-3" />
                 </Link>
               </div>
-              <div className="space-y-3">
-                {analytics!.recentSessions.map((sessionData) => (
-                  <div key={sessionData._id} className="flex items-center justify-between p-3 bg-neutral-700 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="text-neutral-300">
-                        {sessionData.config.type === 'technical' ? '</>' : 
-                         sessionData.config.type === 'behavioral' ? '💬' : '🏗️'}
-                      </span>
-                      <div>
-                        <div className="text-white font-medium">
-                          {sessionData.config.role} • {sessionData.config.type.charAt(0).toUpperCase() + sessionData.config.type.slice(1)}
+              <div className="space-y-2">
+                {analytics!.recentSessions.map((s) => {
+                  const typeKey = s.config.type?.toLowerCase().trim().replace(/[\s_]+/g, '-')
+                  const m = TYPE_META[typeKey] ?? TYPE_META['technical']
+                  const score = s.overallScore ?? 0
+                  return (
+                    <div key={s._id} className="flex items-center gap-4 p-3 bg-neutral-800 hover:bg-neutral-800/80 rounded-lg transition-colors">
+                      <div className={`w-9 h-9 rounded-lg border flex items-center justify-center text-sm ${m.color}`}>
+                        {m.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-white truncate">
+                          {s.config.role} · {m.label}
                         </div>
-                        <div className="text-neutral-400 text-sm">
-                          {new Date(sessionData.startedAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric"
-                          })} • {sessionData.config.difficulty}
+                        <div className="text-xs text-neutral-500">
+                          {new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {s.config.difficulty}
                         </div>
                       </div>
+                      <div className={`text-lg font-bold min-w-[50px] text-right ${
+                        score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-amber-400' : 'text-red-400'
+                      }`}>
+                        {score}%
+                      </div>
                     </div>
-                    <div className={`text-xl font-bold ${
-                      (sessionData.overallScore || 0) >= 80 ? 'text-green-400' :
-                      (sessionData.overallScore || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {sessionData.overallScore || 0}%
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
-            {/* Action Items */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            {/* ── Actions ── */}
+            <div className="flex gap-3">
               <Link href="/interview/setup" className="flex-1">
-                <button className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
-                  <Play className="w-5 h-5" />
-                  Start New Session
+                <button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <Play className="w-4 h-4" /> Start New Session
                 </button>
               </Link>
               <Link href="/learning-hub" className="flex-1">
-                <button className="w-full bg-neutral-700 hover:bg-neutral-600 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
-                  <BookOpen className="w-5 h-5" />
-                  Improve Skills
+                <button className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <BookOpen className="w-4 h-4" /> Improve Skills
                 </button>
               </Link>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

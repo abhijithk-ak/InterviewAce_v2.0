@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { startInterview, validateConfig } from "@/lib/interview/start"
+import { UserSettingsModel } from "@/lib/db/models/UserSettings"
+import { connectDB } from "@/lib/db/mongoose"
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,9 +32,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Start interview with AI-first approach
+    // Load user settings from MongoDB
+    await connectDB()
+    const userSettings = await UserSettingsModel.getOrCreate(session.user.email)
+    
+    // Start interview with AI-first approach using user settings
     const userName = session.user.name || session.user.email?.split('@')[0] || undefined
-    const result = await startInterview(config, userName)
+    const result = await startInterview(
+      config, 
+      userName, 
+      userSettings.aiModel, 
+      userSettings.aiTemperature
+    )
 
     return NextResponse.json({
       success: true,
@@ -41,6 +52,11 @@ export async function POST(req: NextRequest) {
       source: result.source,
       sessionId: `session_${Date.now()}`,
       config,
+      userSettings: {
+        interviewLength: userSettings.interviewLength,
+        scoringMode: userSettings.scoringMode,
+        aiModel: userSettings.aiModel
+      },
       ...(process.env.NODE_ENV === 'development' && result.debug && {
         debug: result.debug
       })

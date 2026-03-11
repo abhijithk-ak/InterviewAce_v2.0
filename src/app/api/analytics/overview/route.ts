@@ -5,6 +5,9 @@ import { connectDB } from "@/lib/db/mongoose"
 import { SessionModel } from "@/lib/db/models/Session"
 import { migrateSubscore } from "@/lib/evaluation/normalize"
 
+// Disable Next.js caching for this route — always recalculate live metrics
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const session = await getServerSession(authConfig)
@@ -93,18 +96,12 @@ export async function GET() {
         migrateSubscore(e.score || 0)
       )
 
-      skillBreakdown.technical = Math.round(
-        technicalScores.reduce((sum: number, s: number) => sum + s, 0) / technicalScores.length
-      )
-      skillBreakdown.confidence = Math.round(
-        confidenceScores.reduce((sum: number, s: number) => sum + s, 0) / confidenceScores.length
-      )
-      skillBreakdown.clarity = Math.round(
-        clarityScores.reduce((sum: number, s: number) => sum + s, 0) / clarityScores.length
-      )
-      skillBreakdown.communication = Math.round(
-        overallScores.reduce((sum: number, s: number) => sum + s, 0) / overallScores.length
-      )
+      // Subscores are 0-10 from migrateSubscore; multiply by 10 for 0-100 percentage display
+      const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length
+      skillBreakdown.technical     = Math.round(avg(technicalScores)     * 10)
+      skillBreakdown.confidence    = Math.round(avg(confidenceScores)    * 10)
+      skillBreakdown.clarity       = Math.round(avg(clarityScores)       * 10)
+      skillBreakdown.communication = Math.round(avg(overallScores)       * 10)
     }
 
     // Score trend (last 10 sessions)
@@ -120,12 +117,100 @@ export async function GET() {
         score: s.overallScore,
       }))
 
+    // ── Evaluation comparison (hybrid vs deterministic vs semantic) ────────────
+    // Collect per-question metrics from all sessions
+    const allMetrics = sessions.flatMap((s) =>
+      (s.questions as any[])
+        .filter((q) => q.metrics?.deterministicScore != null)
+        .map((q) => ({
+          deterministicScore: q.metrics.deterministicScore as number,
+          semanticScore: (q.metrics.semanticScore as number) * 10, // normalise 0-10 → 0-100
+          finalScore: q.metrics.finalScore as number,
+        }))
+    )
+
+    // Also pull from evaluation fields for sessions saved before metrics existed
+    const allEvaluationScores = sessions.flatMap((s) =>
+      (s.questions as any[])
+        .filter((q) => q.evaluation?.deterministicScore != null && q.metrics == null)
+        .map((q) => ({
+          deterministicScore: q.evaluation.deterministicScore as number,
+          semanticScore: (q.evaluation.semanticScore as number) * 10,
+          finalScore: q.evaluation.finalScore as number,
+        }))
+    )
+
+    const combinedScores = [...allMetrics, ...allEvaluationScores]
+
+    let evaluationComparison = {
+      deterministicAverage: 0,
+      semanticAverage: 0,
+      hybridAverage: 0,
+      correlation: null as number | null,
+      sampleCount: combinedScores.length,
+    }
+
+    if (combinedScores.length > 0) {
+      const n = combinedScores.length
+      const avgDet = combinedScores.reduce((s, m) => s + m.deterministicScore, 0) / n
+      const avgSem = combinedScores.reduce((s, m) => s + m.semanticScore, 0) / n
+      const avgHyb = combinedScores.reduce((s, m) => s + m.finalScore, 0) / n
+
+      // Pearson correlation between deterministicScore and semanticScore
+      let correlation: number | null = null
+      if (n >= 2) {
+        const meanD = avgDet
+        const meanS = avgSem
+        let num = 0, denD = 0, denS = 0
+        for (const m of combinedScores) {
+          const dD = m.deterministicScore - meanD
+          const dS = m.semanticScore - meanS
+          num  += dD * dS
+          denD += dD * dD
+          denS += dS * dS
+        }
+        const denom = Math.sqrt(denD * denS)
+        correlation = denom === 0 ? null : Math.round((num / denom) * 1000) / 1000
+      }
+
+      evaluationComparison = {
+        deterministicAverage: Math.round(avgDet * 10) / 10,
+        semanticAverage:      Math.round(avgSem * 10) / 10,
+        hybridAverage:        Math.round(avgHyb * 10) / 10,
+        correlation,
+        sampleCount: n,
+      }
+    }
+
+    // ── Per-session comparison trend (last 10 sessions with hybrid data) ───────
+    const comparisonTrend = sessions
+      .slice(0, 10)
+      .reverse()
+      .map((s) => {
+        const questions = (s.questions as any[]).filter(
+          (q) => q.metrics?.deterministicScore != null
+        )
+        if (questions.length === 0) return null
+        const avgD = questions.reduce((a: number, q: any) => a + q.metrics.deterministicScore, 0) / questions.length
+        const avgS = questions.reduce((a: number, q: any) => a + q.metrics.semanticScore * 10, 0) / questions.length
+        const avgF = questions.reduce((a: number, q: any) => a + q.metrics.finalScore, 0) / questions.length
+        return {
+          date: new Date(s.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          deterministicScore: Math.round(avgD * 10) / 10,
+          semanticScore:      Math.round(avgS * 10) / 10,
+          finalScore:         Math.round(avgF * 10) / 10,
+        }
+      })
+      .filter(Boolean)
+
     return NextResponse.json({
       totalSessions,
       averageScore,
       avgDuration,
       skillBreakdown,
       scoreTrend,
+      evaluationComparison,
+      comparisonTrend,
     })
   } catch (err) {
     console.error("Analytics error:", err)

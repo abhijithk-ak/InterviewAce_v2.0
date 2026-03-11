@@ -3,8 +3,22 @@
  * Export all evaluation components
  */
 
-export { evaluateAnswer, evaluateMultipleAnswers } from "./engine"
-export type { EvaluationResult, ScoreBreakdown, EvaluationWeights } from "./engine"
+export { 
+  evaluateAnswer, 
+  evaluateAnswerSync, 
+  evaluateMultipleAnswers, 
+  evaluateMultipleAnswersSync,
+  evaluateAnswerHybrid,
+  DEFAULT_WEIGHTS,
+  SEMANTIC_ENHANCED_WEIGHTS
+} from "./engine"
+export type { 
+  EvaluationResult, 
+  ScoreBreakdown, 
+  EvaluationWeights, 
+  EvaluationOptions,
+  HybridEvaluationResult
+} from "./engine"
 
 export { 
   relevanceScore,

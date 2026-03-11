@@ -1,119 +1,97 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 type SessionTypeChartProps = {
   data: {
     technical: number
     behavioral: number
     'system-design': number
+    hr?: number
   }
   height?: number
 }
 
-const COLORS = {
-  technical: '#3B82F6',
-  behavioral: '#10B981', 
-  'system-design': '#F59E0B'
+const PALETTE = [
+  { key: 'technical',    label: 'Technical',    color: '#6366f1' },
+  { key: 'behavioral',   label: 'Behavioral',   color: '#10b981' },
+  { key: 'system-design',label: 'System Design',color: '#f59e0b' },
+  { key: 'hr',           label: 'HR',           color: '#ec4899' },
+]
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null
+  const d = payload[0]
+  return (
+    <div className="bg-neutral-800 border border-neutral-600 rounded-lg px-3 py-2 shadow-xl">
+      <p className="text-white font-semibold text-sm">{d.name}</p>
+      <p style={{ color: d.payload.fill }} className="font-bold">{d.value} sessions</p>
+      <p className="text-neutral-400 text-xs">{d.payload.pct}%</p>
+    </div>
+  )
 }
 
-const TYPE_LABELS = {
-  technical: 'Technical',
-  behavioral: 'Behavioral',
-  'system-design': 'System Design'
+const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  if (percent < 0.05) return null
+  const RADIAN = Math.PI / 180
+  const r = innerRadius + (outerRadius - innerRadius) * 0.55
+  const x = cx + r * Math.cos(-midAngle * RADIAN)
+  const y = cy + r * Math.sin(-midAngle * RADIAN)
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
+      fontSize={12} fontWeight={600}>
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  )
 }
 
-const ICONS = {
-  technical: '</>',
-  behavioral: '💬',
-  'system-design': '🏗️'
-}
+export function SessionTypeChart({ data, height = 280 }: SessionTypeChartProps) {
+  const total = Object.values(data).reduce((s, v) => s + (v ?? 0), 0)
 
-export function SessionTypeChart({ data, height = 300 }: SessionTypeChartProps) {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const chartData = Object.entries(data)
-    .filter(([_, count]) => count > 0)
-    .map(([type, count]) => ({
-      type: type as keyof typeof TYPE_LABELS,
-      count,
-      percentage: count,
-      color: COLORS[type as keyof typeof COLORS]
+  const chartData = PALETTE
+    .filter(p => (data[p.key as keyof typeof data] ?? 0) > 0)
+    .map(p => ({
+      name: p.label,
+      value: data[p.key as keyof typeof data] ?? 0,
+      fill: p.color,
+      pct: total > 0 ? Math.round(((data[p.key as keyof typeof data] ?? 0) / total) * 100) : 0,
     }))
 
-  const totalSessions = Object.values(data).reduce((sum, count) => sum + count, 0)
-
-  if (!mounted) {
+  if (chartData.length === 0 || total === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-400">
+      <div className="flex items-center justify-center text-neutral-400" style={{ height }}>
         <div className="text-center">
           <div className="text-2xl mb-2">📊</div>
-          <p className="text-sm">Loading session distribution...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (chartData.length === 0 || totalSessions === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-neutral-400">
-        <div className="text-center">
-          <div className="text-2xl mb-2">📊</div>
-          <p className="text-sm">No sessions completed yet</p>
+          <p className="text-sm">No sessions yet</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6" style={{ height }}>      
-      {/* Legend */}
-      <div className="space-y-3">
-        {chartData.map((item) => {
-          const percentage = Math.round((item.count / totalSessions) * 100)
-          
-          return (
-            <div key={item.type} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm text-neutral-300 font-medium">
-                    {ICONS[item.type]} {TYPE_LABELS[item.type]}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="text-white font-medium">{item.count}</div>
-                  <div className="text-xs text-neutral-400">{percentage}%</div>
-                </div>
-              </div>
-              
-              {/* Progress bar */}
-              <div className="bg-neutral-700 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full transition-all duration-1000 ease-out"
-                  style={{ 
-                    width: `${percentage}%`, 
-                    backgroundColor: item.color
-                  }}
-                />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      
-      {/* Summary */}
-      <div className="text-center pt-2">
-        <div className="text-lg font-bold text-white">{totalSessions}</div>
-        <div className="text-sm text-neutral-400">Total Sessions</div>
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={height}>
+      <PieChart>
+        <Pie
+          data={chartData}
+          cx="50%" cy="50%"
+          innerRadius={60}
+          outerRadius={100}
+          paddingAngle={3}
+          dataKey="value"
+          labelLine={false}
+          label={renderCustomLabel}
+        >
+          {chartData.map((entry, i) => (
+            <Cell key={i} fill={entry.fill} stroke="transparent" />
+          ))}
+        </Pie>
+        <Tooltip content={<CustomTooltip />} />
+        <Legend
+          iconType="circle"
+          iconSize={10}
+          formatter={(value) => <span style={{ color: '#D1D5DB', fontSize: 13 }}>{value}</span>}
+        />
+      </PieChart>
+    </ResponsiveContainer>
   )
 }

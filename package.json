@@ -6,11 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:stats": "npx tsx scripts/view-db-stats.ts",
+    "db:clear": "npx tsx scripts/clear-research-data.ts",
+    "db:clear-old": "npx tsx scripts/clear-old-sessions.ts",
+    "db:clear-user": "npx tsx scripts/clear-user-sessions.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
     "@openrouter/ai-sdk-provider": "^2.1.1",
+    "@xenova/transformers": "^2.17.2",
     "ai": "^6.0.69",
     "lucide-react": "^0.563.0",
     "mongodb": "^7.1.0",
@@ -20,13 +25,16 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^2.12.7",
+    "sharp": "^0.34.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/estree": "^1.0.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/whatwg-url": "^13.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
