@@ -74,8 +74,13 @@ export function clarityScore(answer: string): number {
 
 /**
  * Technical Depth Score (25% weight)
- * Measures domain-specific keyword usage
+ * Measures domain-specific keyword usage + code snippet detection
  * Proves knowledge of relevant concepts
+ * 
+ * SCORING PHILOSOPHY:
+ * - Rewards accurate domain knowledge, not just keyword stuffing
+ * - More forgiving to encourage learning
+ * - Balances keyword count with diversity and practical demonstration
  */
 export function technicalScore(answer: string, domainKeywords: string[]): number {
   if (domainKeywords.length === 0) return 50 // Neutral if no keywords provided
@@ -95,17 +100,70 @@ export function technicalScore(answer: string, domainKeywords: string[]): number
     }
   }
 
-  // Calculate score based on coverage
-  // Use logarithmic scale to avoid requiring too many keywords
-  const coverage = matches / Math.sqrt(domainKeywords.length)
-  let score = Math.min(coverage * 50, 100)
+  // NEW SCORING APPROACH: More forgiving and reward-based
+  // Base score for showing any technical knowledge
+  let score = 30
+  
+  // Award points per keyword matched (up to 10 keywords for max points)
+  const keywordPoints = Math.min(matches * 5, 50) // 5 points per keyword, max 50
+  score += keywordPoints
 
-  // Bonus for diverse keyword usage (not just repeating one term)
-  if (matchedKeywords.size >= 3) score += 10
-  if (matchedKeywords.size >= 5) score += 10
+  // Bonus for diversity of keywords (not just repeating one term)
+  if (matchedKeywords.size >= 3) score += 10  // Shows breadth of knowledge
+  if (matchedKeywords.size >= 5) score += 10  // Shows depth and variety
+  if (matchedKeywords.size >= 7) score += 5   // Expert-level coverage
+
+  // Bonus for code snippets (shows practical knowledge)
+  const hasCodeSnippet = detectCodeSnippet(answer)
+  if (hasCodeSnippet.detected) {
+    score += 10 // Bonus for including code/commands
+    if (hasCodeSnippet.isFunctional) score += 5 // Extra for complete examples
+  }
 
   return Math.round(Math.min(score, 100))
 }
+
+/**
+ * Detect code snippets in answer
+ * Returns: { detected: boolean, isFunctional: boolean }
+ */
+function detectCodeSnippet(answer: string): { detected: boolean; isFunctional: boolean } {
+  const codeIndicators = {
+    // Code structure indicators
+    braces: /\{[^}]*\}/g,
+    parentheses: /[a-zA-Z_]\w*\s*\([^)]*\)/g, // function calls
+    annotations: /@override|@deprecated|@required/gi,
+    arrows: /=>/g,
+    keywords: /\b(class|function|const|let|var|void|async|await|return|if|else|for|while|switch|case|override|build|setState|initState|dispose)\b/gi,
+    // Flutter/Dart specific
+    dartTypes: /\b(Widget|BuildContext|State|StatelessWidget|StatefulWidget|Provider|String|int|double|bool|List|Map)\b/g,
+    // Common code patterns
+    assignments: /\w+\s*[:=]\s*[^;,\s]+/g,
+    chaining: /\.\w+\([^)]*\)/g, // method chaining
+  }
+
+  let indicatorCount = 0
+  let hasStructure = false
+
+  // Count occurrences of code indicators
+  if ((answer.match(codeIndicators.braces) || []).length > 0) {
+    indicatorCount += 2
+    hasStructure = true
+  }
+  if ((answer.match(codeIndicators.parentheses) || []).length >= 2) indicatorCount++
+  if ((answer.match(codeIndicators.annotations) || []).length > 0) indicatorCount += 2
+  if ((answer.match(codeIndicators.arrows) || []).length > 0) indicatorCount++
+  if ((answer.match(codeIndicators.keywords) || []).length >= 3) indicatorCount += 2
+  if ((answer.match(codeIndicators.dartTypes) || []).length >= 2) indicatorCount++
+  if ((answer.match(codeIndicators.assignments) || []).length >= 2) indicatorCount++
+  if ((answer.match(codeIndicators.chaining) || []).length >= 2) indicatorCount++
+
+  return {
+    detected: indicatorCount >= 3, // Has code-like patterns
+    isFunctional: indicatorCount >= 5 && hasStructure // Has complete code structure
+  }
+}
+
 
 /**
  * Confidence Score (15% weight)
@@ -117,10 +175,22 @@ export function confidenceScore(answer: string): number {
 
   // Strong confidence indicators (action verbs, definite statements)
   const STRONG_SIGNALS = [
+    // Development
     "I implemented", "I designed", "I built", "I created", "I developed",
     "I solved", "I optimized", "I improved", "I achieved", "I delivered",
+    "I integrated", "I configured", "I deployed", "I refactored", "I migrated",
+    "I maintained", "I architected", "I established", "I initiated",
+    // Support & Troubleshooting
+    "I diagnosed", "I troubleshot", "I resolved", "I fixed", "I debugged",
+    "I identified", "I analyzed", "I investigated", "I verified",
+    "I documented", "I escalated", "I guided", "I assisted",
+    // General
     "successfully", "effectively", "efficiently", "accomplished",
-    "demonstrated", "proven", "resulted in", "led to", "ensured"
+    "demonstrated", "proven", "resulted in", "led to", "ensured",
+    "will", "can", "would", "is", "are", "does", "ensures", "provides",
+    "clearly", "definitely", "certainly", "absolutely", "specifically",
+    // Systematic approaches
+    "first", "then", "next", "finally", "step by step", "systematically"
   ]
 
   // Weak confidence indicators (hedging, uncertainty)

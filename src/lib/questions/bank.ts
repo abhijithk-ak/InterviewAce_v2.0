@@ -1,9 +1,10 @@
 type Question = {
   id: string
   category: "technical" | "behavioral" | "hr" | "system-design"
-  role: "frontend" | "backend" | "fullstack" | "general"
+  role: "frontend" | "backend" | "fullstack" | "flutter" | "mobile" | "devops" | "data-science" | "backend-java" | "data-engineer" | "ml-engineer" | "qa" | "technical-support" | "general"
   difficulty: "easy" | "medium" | "hard"
   text: string
+  sampleAnswer?: string
 }
 
 const QUESTION_BANK: Question[] = [
