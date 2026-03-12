@@ -3,13 +3,29 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardHeader, CardContent, Button } from "@/components/ui"
-import { Briefcase, Code, Users, FileText } from "lucide-react"
+import { Briefcase, Code, Users, FileText, ChevronDown } from "lucide-react"
 
 type InterviewConfig = {
   role: string
   type: "Technical" | "Behavioral" | "System Design" | "HR"
   difficulty: "Easy" | "Medium" | "Hard"
 }
+
+const SPECIALIZED_ROLES = [
+  { value: "Flutter Developer", label: "Flutter Developer", category: "Mobile" },
+  { value: "Mobile Developer", label: "Mobile Developer (React Native/iOS/Android)", category: "Mobile" },
+  { value: "Frontend Developer", label: "Frontend Developer", category: "Web" },
+  { value: "Backend Developer", label: "Backend Developer (Node.js/Python)", category: "Web" },
+  { value: "Backend Java Developer", label: "Backend Java Developer (Spring Boot)", category: "Web" },
+  { value: "Fullstack Developer", label: "Fullstack Developer", category: "Web" },
+  { value: "DevOps Engineer", label: "DevOps Engineer", category: "Infrastructure" },
+  { value: "Data Engineer", label: "Data Engineer", category: "Data" },
+  { value: "Data Scientist", label: "Data Scientist", category: "Data" },
+  { value: "ML Engineer", label: "ML Engineer", category: "Data" },
+  { value: "QA Engineer", label: "QA Engineer", category: "Testing" },
+  { value: "Technical Support Engineer", label: "Technical Support Engineer", category: "Support" },
+  { value: "System Design Specialist", label: "System Design Specialist", category: "Architecture" },
+]
 
 const INTERVIEW_TYPES = [
   { value: "Technical", icon: Code, label: "Technical", description: "Coding & problem solving" },
@@ -21,7 +37,7 @@ const INTERVIEW_TYPES = [
 export default function InterviewSetup() {
   const router = useRouter()
   const [config, setConfig] = useState<InterviewConfig>({
-    role: "",
+    role: "Flutter Developer",
     type: "Technical",
     difficulty: "Medium",
   })
@@ -29,7 +45,7 @@ export default function InterviewSetup() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!config.role.trim()) {
-      alert("Please enter a role")
+      alert("Please select a role")
       return
     }
     
@@ -51,19 +67,76 @@ export default function InterviewSetup() {
         <div className="bg-neutral-800 rounded-lg border border-neutral-700">
           <div className="p-8">
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* Role */}
+              {/* Role Selection */}
               <div>
                 <label htmlFor="role" className="block text-sm font-semibold text-white mb-3">
                   Target Role
+                  <span className="ml-2 text-xs text-neutral-400 font-normal">
+                    (13+ specialized roles)
+                  </span>
                 </label>
-                <input
-                  id="role"
-                  type="text"
-                  value={config.role}
-                  onChange={(e) => setConfig({ ...config, role: e.target.value })}
-                  placeholder="e.g., Senior Software Engineer"
-                  className="w-full px-4 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-[15px] text-white placeholder-neutral-400"
-                />
+                <div className="relative">
+                  <select
+                    id="role"
+                    value={config.role}
+                    onChange={(e) => setConfig({ ...config, role: e.target.value })}
+                    className="w-full px-4 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-[15px] text-white appearance-none cursor-pointer"
+                  >
+                    <optgroup label="Mobile Development" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Mobile").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Web Development" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Web").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Data & ML" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Data").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Infrastructure & DevOps" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Infrastructure").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Testing & QA" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Testing").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Support" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Support").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Architecture" className="bg-neutral-800">
+                      {SPECIALIZED_ROLES.filter(r => r.category === "Architecture").map(role => (
+                        <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
+                          {role.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" />
+                </div>
+                <p className="mt-2 text-xs text-neutral-400">
+                  Select from {SPECIALIZED_ROLES.length} specialized roles with role-specific questions and evaluation
+                </p>
               </div>
 
               {/* Interview Type */}
