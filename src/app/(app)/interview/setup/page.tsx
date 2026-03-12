@@ -21,6 +21,7 @@ const SPECIALIZED_ROLES = [
   { value: "DevOps Engineer", label: "DevOps Engineer", category: "Infrastructure" },
   { value: "Data Engineer", label: "Data Engineer", category: "Data" },
   { value: "Data Scientist", label: "Data Scientist", category: "Data" },
+  { value:"Data Analyst", label: "Data Analyst", category: "Data" },
   { value: "ML Engineer", label: "ML Engineer", category: "Data" },
   { value: "QA Engineer", label: "QA Engineer", category: "Testing" },
   { value: "Technical Support Engineer", label: "Technical Support Engineer", category: "Support" },
@@ -37,15 +38,33 @@ const INTERVIEW_TYPES = [
 export default function InterviewSetup() {
   const router = useRouter()
   const [config, setConfig] = useState<InterviewConfig>({
-    role: "Flutter Developer",
+    role: "",
     type: "Technical",
     difficulty: "Medium",
   })
+  const [customRole, setCustomRole] = useState("")
+  const [showCustomInput, setShowCustomInput] = useState(false)
+
+  const handleRoleChange = (value: string) => {
+    if (value === "other") {
+      setShowCustomInput(true)
+      setConfig({ ...config, role: customRole })
+    } else {
+      setShowCustomInput(false)
+      setCustomRole("")
+      setConfig({ ...config, role: value })
+    }
+  }
+
+  const handleCustomRoleChange = (value: string) => {
+    setCustomRole(value)
+    setConfig({ ...config, role: value })
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!config.role.trim()) {
-      alert("Please select a role")
+      alert("Please select or enter a role")
       return
     }
     
@@ -78,10 +97,13 @@ export default function InterviewSetup() {
                 <div className="relative">
                   <select
                     id="role"
-                    value={config.role}
-                    onChange={(e) => setConfig({ ...config, role: e.target.value })}
+                    value={showCustomInput ? "other" : config.role}
+                    onChange={(e) => handleRoleChange(e.target.value)}
                     className="w-full px-4 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-[15px] text-white appearance-none cursor-pointer"
                   >
+                    <option value="" disabled className="bg-neutral-700 text-neutral-400">
+                      Select a role...
+                    </option>
                     <optgroup label="Mobile Development" className="bg-neutral-800">
                       {SPECIALIZED_ROLES.filter(r => r.category === "Mobile").map(role => (
                         <option key={role.value} value={role.value} className="bg-neutral-700 text-white py-2">
@@ -131,11 +153,34 @@ export default function InterviewSetup() {
                         </option>
                       ))}
                     </optgroup>
+                    <optgroup label="Other" className="bg-neutral-800">
+                      <option value="other" className="bg-neutral-700 text-white py-2">
+                        Other (Enter custom role)
+                      </option>
+                    </optgroup>
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" />
                 </div>
+                
+                {/* Custom Role Input */}
+                {showCustomInput && (
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      value={customRole}
+                      onChange={(e) => handleCustomRoleChange(e.target.value)}
+                      placeholder="Enter your role (e.g., Solutions Architect, Product Manager)"
+                      className="w-full px-4 py-3 bg-neutral-700 border border-neutral-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-[15px] text-white placeholder-neutral-400"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                
                 <p className="mt-2 text-xs text-neutral-400">
-                  Select from {SPECIALIZED_ROLES.length} specialized roles with role-specific questions and evaluation
+                  {showCustomInput 
+                    ? "Enter your specific role for tailored interview questions"
+                    : `Select from ${SPECIALIZED_ROLES.length} specialized roles with role-specific questions and evaluation`
+                  }
                 </p>
               </div>
 
