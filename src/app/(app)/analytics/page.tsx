@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { BarChart2, TrendingUp, Award, Clock, Zap, Play, BookOpen, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
+import { BarChart2, TrendingUp, Award, Clock, Play, BookOpen, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
-import { ScoreTrendChart, SkillBreakdownChart, SessionTypeChart } from "@/components/charts"
+import { ScoreTrendChart, SkillBreakdownChart, SessionTypeChart, PerformanceByTypeChart } from "@/components/charts"
 
 // Always fetch fresh data — never use cached analytics
 export const dynamic = 'force-dynamic'
@@ -17,12 +17,12 @@ type AnalyticsData = {
   bestScore: number
   avgDuration: number
   skillBreakdown: {
-    technical: number
-    communication: number
-    confidence: number
+    concept: number
+    semantic: number
     clarity: number
+    overall: number
   }
-  scoreTrend: Array<{ date: string; score: number }>
+  scoreTrend: Array<{ date: string; score: number; type: string; difficulty: string }>
   sessionsByType: {
     technical: number
     behavioral: number
@@ -45,7 +45,17 @@ type AnalyticsData = {
     overallScore?: number
   }>
   improvement: number
-  successRate: number
+  improvementSuggestions: string[]
+  performanceByType: {
+    technical: number
+    behavioral: number
+    'system-design': number
+    hr: number
+    technicalSessions: number
+    behavioralSessions: number
+    'system-designSessions': number
+    hrSessions: number
+  }
 }
 
 async function getAnalyticsData(userEmail: string) {
@@ -89,32 +99,26 @@ async function getAnalyticsData(userEmail: string) {
 
     // Calculate skill breakdown from question evaluations
     const skillData = {
-      technical: [] as number[],
-      confidence: [] as number[],
+      concept: [] as number[],
+      semantic: [] as number[],
       clarity: [] as number[],
-      communication: [] as number[]
+      overall: [] as number[]
     }
 
     sessions.forEach(session => {
       session.questions?.forEach((question: any) => {
-        if (question.evaluation) {
-          if (question.evaluation.technical_depth !== undefined) {
-            skillData.technical.push(question.evaluation.technical_depth)
-          }
-          if (question.evaluation.confidence !== undefined) {
-            skillData.confidence.push(question.evaluation.confidence)
-          }
-          if (question.evaluation.clarity !== undefined) {
-            skillData.clarity.push(question.evaluation.clarity)
-          }
-          // Communication is calculated as average of clarity and confidence
-          if (question.evaluation.clarity !== undefined && question.evaluation.confidence !== undefined) {
-            skillData.communication.push((question.evaluation.clarity + question.evaluation.confidence) / 2)
-          } else if (question.evaluation.clarity !== undefined) {
-            skillData.communication.push(question.evaluation.clarity)
-          } else if (question.evaluation.confidence !== undefined) {
-            skillData.communication.push(question.evaluation.confidence)
-          }
+        const normalized = getNormalizedQuestionScores(question)
+        if (normalized.concept != null) {
+          skillData.concept.push(normalized.concept)
+        }
+        if (normalized.semantic != null) {
+          skillData.semantic.push(normalized.semantic)
+        }
+        if (normalized.clarity != null) {
+          skillData.clarity.push(normalized.clarity)
+        }
+        if (normalized.overall != null) {
+          skillData.overall.push(normalized.overall / 10)
         }
       })
     })
@@ -123,10 +127,10 @@ async function getAnalyticsData(userEmail: string) {
     const avg10 = (arr: number[]) =>
       arr.length > 0 ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0
     const skillBreakdown = {
-      technical:     Math.round(avg10(skillData.technical)     * 10),
-      communication: Math.round(avg10(skillData.communication) * 10),
-      confidence:    Math.round(avg10(skillData.confidence)    * 10),
+      concept:       Math.round(avg10(skillData.concept)       * 10),
+      semantic:      Math.round(avg10(skillData.semantic)      * 10),
       clarity:       Math.round(avg10(skillData.clarity)       * 10),
+      overall:       Math.round(avg10(skillData.overall)       * 10),
     }
 
     // Score trend — oldest → newest, overallScore is already 0-100
@@ -134,7 +138,9 @@ async function getAnalyticsData(userEmail: string) {
     const recentSessions = trendSessions.slice(0, 10).reverse()
     const scoreTrend = recentSessions.map((session) => ({
       date: session.startedAt.toISOString(),
-      score: session.overallScore || 0
+      score: session.overallScore || 0,
+      type: session.config?.type || 'Unknown',
+      difficulty: session.config?.difficulty || 'Unknown',
     }))
 
     // Session type breakdown - normalize case and add logging
@@ -173,6 +179,97 @@ async function getAnalyticsData(userEmail: string) {
     console.log("Session types:", sessionsByType)
     console.log("Difficulty breakdown:", difficultyBreakdown)
 
+    // Average score by interview type
+    const performanceBuckets: Record<string, { total: number; count: number }> = {
+      technical: { total: 0, count: 0 },
+      behavioral: { total: 0, count: 0 },
+      'system-design': { total: 0, count: 0 },
+      hr: { total: 0, count: 0 },
+    }
+
+    sessions.forEach((session) => {
+      const rawType = session.config?.type?.toLowerCase().trim().replace(/[\s_]+/g, '-')
+      const score = session.overallScore
+      if (score == null) return
+
+      let typeKey: keyof typeof performanceBuckets | null = null
+      if (rawType === 'technical') typeKey = 'technical'
+      else if (rawType === 'behavioral' || rawType === 'behavioural') typeKey = 'behavioral'
+      else if (rawType === 'system-design' || rawType === 'systemdesign' || rawType === 'system_design') typeKey = 'system-design'
+      else if (rawType === 'hr') typeKey = 'hr'
+
+      if (!typeKey) return
+
+      performanceBuckets[typeKey].total += score
+      performanceBuckets[typeKey].count += 1
+    })
+
+    const performanceByType = {
+      technical: performanceBuckets.technical.count > 0 ? Math.round(performanceBuckets.technical.total / performanceBuckets.technical.count) : 0,
+      behavioral: performanceBuckets.behavioral.count > 0 ? Math.round(performanceBuckets.behavioral.total / performanceBuckets.behavioral.count) : 0,
+      'system-design': performanceBuckets['system-design'].count > 0 ? Math.round(performanceBuckets['system-design'].total / performanceBuckets['system-design'].count) : 0,
+      hr: performanceBuckets.hr.count > 0 ? Math.round(performanceBuckets.hr.total / performanceBuckets.hr.count) : 0,
+      technicalSessions: performanceBuckets.technical.count,
+      behavioralSessions: performanceBuckets.behavioral.count,
+      'system-designSessions': performanceBuckets['system-design'].count,
+      hrSessions: performanceBuckets.hr.count,
+    }
+
+    // Improvement suggestions derived from evaluation errors and feedback text
+    const suggestionCounts = {
+      conceptual: 0,
+      examples: 0,
+      structure: 0,
+      precision: 0,
+    }
+
+    sessions.forEach((session) => {
+      session.questions?.forEach((question: any) => {
+        const evaluation = question?.evaluation ?? {}
+        const textCorpus = [
+          ...(Array.isArray(evaluation.errors) ? evaluation.errors : []),
+          evaluation.explanation,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+
+        const normalized = getNormalizedQuestionScores(question)
+
+        if (/(incorrect|contradict|wrong|misunderstand|concept)/.test(textCorpus) || (normalized.concept ?? 10) < 6) {
+          suggestionCounts.conceptual += 1
+        }
+        if (/(example|specific|detail|elaborat|concrete)/.test(textCorpus) || ((question?.answer?.length ?? 0) < 80)) {
+          suggestionCounts.examples += 1
+        }
+        if (/(clarity|structure|organize|coherent|unclear|vague)/.test(textCorpus) || (normalized.clarity ?? 10) < 6) {
+          suggestionCounts.structure += 1
+        }
+        if (/(accuracy|precise|terminology|assumption|overgeneral)/.test(textCorpus) || (normalized.semantic ?? 10) < 6) {
+          suggestionCounts.precision += 1
+        }
+      })
+    })
+
+    const suggestionCatalog: Array<{ key: keyof typeof suggestionCounts; label: string }> = [
+      { key: 'conceptual', label: 'Improve conceptual explanations' },
+      { key: 'examples', label: 'Provide more concrete examples' },
+      { key: 'structure', label: 'Structure answers more clearly' },
+      { key: 'precision', label: 'Use more precise technical language' },
+    ]
+
+    const improvementSuggestions = suggestionCatalog
+      .sort((a, b) => suggestionCounts[b.key] - suggestionCounts[a.key])
+      .filter((item) => suggestionCounts[item.key] > 0)
+      .slice(0, 3)
+      .map((item) => item.label)
+
+    const fallbackSuggestions = [
+      'Improve conceptual explanations',
+      'Provide more concrete examples',
+      'Structure answers more clearly',
+    ]
+
     // Format recent sessions
     const formattedRecentSessions = sessions.slice(0, 5).map(session => ({
       _id: session._id.toString(),
@@ -187,11 +284,6 @@ async function getAnalyticsData(userEmail: string) {
       ? (trendWithScore[0].overallScore ?? 0) - (trendWithScore[trendWithScore.length - 1].overallScore ?? 0)
       : 0
 
-    // Success rate: sessions scoring >= 70
-    const successRate = totalSessions > 0
-      ? Math.round((sessions.filter(s => (s.overallScore ?? 0) >= 70).length / totalSessions) * 100)
-      : 0
-
     const analytics: AnalyticsData = {
       totalSessions,
       averageScore,
@@ -203,7 +295,8 @@ async function getAnalyticsData(userEmail: string) {
       difficultyBreakdown,
       recentSessions: formattedRecentSessions,
       improvement,
-      successRate,
+      improvementSuggestions: improvementSuggestions.length > 0 ? improvementSuggestions : fallbackSuggestions,
+      performanceByType,
     }
     
     return {
@@ -241,13 +334,6 @@ export default async function AnalyticsPage() {
     behavioral:     { label: 'Behavioral',   icon: '💬',  color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     'system-design':{ label: 'System Design',icon: '🏗️', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
     hr:             { label: 'HR',           icon: '🎯',  color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
-  }
-
-  const SKILL_META: Record<string, { color: string; dot: string }> = {
-    technical:     { color: 'text-indigo-400', dot: 'bg-indigo-500' },
-    communication: { color: 'text-emerald-400', dot: 'bg-emerald-500' },
-    confidence:    { color: 'text-amber-400',   dot: 'bg-amber-500' },
-    clarity:       { color: 'text-purple-400',  dot: 'bg-purple-500' },
   }
 
   return (
@@ -365,40 +451,6 @@ export default async function AnalyticsPage() {
               </div>
             </div>
 
-            {/* ── Skill bars ── */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-              <h2 className="text-base font-semibold text-white mb-5">Skill Breakdown</h2>
-              <div className="grid md:grid-cols-2 gap-x-10 gap-y-5">
-                {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => {
-                  const meta = SKILL_META[skill] ?? { color: 'text-neutral-300', dot: 'bg-neutral-500' }
-                  const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : 'Needs Work'
-                  return (
-                    <div key={skill}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2.5 h-2.5 rounded-full ${meta.dot}`} />
-                          <span className="text-sm font-medium text-neutral-200 capitalize">{skill}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-bold ${meta.color}`}>{score}%</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            score >= 80 ? 'bg-emerald-500/15 text-emerald-400' :
-                            score >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'
-                          }`}>{label}</span>
-                        </div>
-                      </div>
-                      <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-700 ${meta.dot}`}
-                          style={{ width: `${Math.min(score, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
             {/* ── Session Distribution + Difficulty side-by-side ── */}
             <div className="grid lg:grid-cols-2 gap-4">
               {/* Session type donut */}
@@ -459,14 +511,7 @@ export default async function AnalyticsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
-                    <div className="text-xs text-neutral-500 mb-2 flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Success Rate
-                    </div>
-                    <div className="text-2xl font-bold text-emerald-400">{analytics!.successRate}%</div>
-                    <div className="text-xs text-neutral-600 mt-1">Sessions ≥ 70%</div>
-                  </div>
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 col-span-2">
                     <div className="text-xs text-neutral-500 mb-2 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Avg Duration
                     </div>
@@ -474,6 +519,29 @@ export default async function AnalyticsPage() {
                     <div className="text-xs text-neutral-600 mt-1">Per session</div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ── Improvement Suggestions + Performance by Type ── */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                <h2 className="text-base font-semibold text-white mb-4">Improvement Suggestions</h2>
+                <div className="space-y-3">
+                  {analytics!.improvementSuggestions.slice(0, 3).map((item) => (
+                    <div key={item} className="flex items-start gap-3 p-3 rounded-lg bg-neutral-800/80 border border-neutral-700">
+                      <span className="w-2 h-2 mt-2 rounded-full bg-indigo-400" />
+                      <span className="text-sm text-neutral-200">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-white">Performance by Interview Type</h2>
+                  <span className="text-xs text-neutral-500">Average score</span>
+                </div>
+                <PerformanceByTypeChart data={analytics!.performanceByType} height={240} />
               </div>
             </div>
 
@@ -533,3 +601,39 @@ export default async function AnalyticsPage() {
     </div>
   )
 }
+
+function getNormalizedQuestionScores(question: any) {
+  const evaluation = question?.evaluation ?? {}
+  const metrics = question?.metrics ?? {}
+  const breakdown = evaluation.breakdown ?? {}
+
+  return {
+    concept: firstDefined(
+      metrics.conceptScore,
+      breakdown.conceptScore,
+      evaluation.conceptScore,
+    ),
+    semantic: firstDefined(
+      metrics.semanticScore,
+      breakdown.semanticScore,
+      evaluation.semanticScore,
+    ),
+    clarity: firstDefined(
+      metrics.clarityScore,
+      breakdown.clarityScore,
+      evaluation.clarityScore,
+    ),
+    overall: firstDefined(
+      metrics.overallScore,
+      evaluation.overallScore,
+      metrics.finalScore,
+      evaluation.finalScore,
+      evaluation.score
+    ),
+  }
+}
+
+function firstDefined(...values: Array<number | undefined | null>) {
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value))
+}
+

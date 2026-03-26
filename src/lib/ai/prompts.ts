@@ -23,13 +23,14 @@ export interface ResponseData {
   evaluationResult: {
     overallScore: number
     breakdown: {
-      technical: number
-      clarity: number
-      confidence: number
-      relevance: number
-      structure: number
+      conceptScore: number
+      semanticScore: number
+      clarityScore: number
     }
     feedback: string
+    explanation?: string
+    errors?: string[]
+    evaluationMethod?: string
   }
   sessionHistory: Array<{ role: "user" | "assistant"; content: string }>
   config: InterviewConfig
@@ -384,8 +385,11 @@ CURRENT QUESTION BEING EVALUATED: "${data.question}"
 Candidate's Answer to Above Question: 
 "${data.answer}"
 
-Evaluation Score: ${data.evaluationResult.overallScore}/100 
-(Technical: ${data.evaluationResult.breakdown.technical}/20, Clarity: ${data.evaluationResult.breakdown.clarity}/20, Confidence: ${data.evaluationResult.breakdown.confidence}/20, Relevance: ${data.evaluationResult.breakdown.relevance}/20, Structure: ${data.evaluationResult.breakdown.structure}/20)
+Evaluation Score: ${data.evaluationResult.overallScore}/100
+(Concept: ${data.evaluationResult.breakdown.conceptScore}/10, Semantic: ${data.evaluationResult.breakdown.semanticScore}/10, Clarity: ${data.evaluationResult.breakdown.clarityScore}/10)
+AI Evaluator Explanation: ${data.evaluationResult.explanation || data.evaluationResult.feedback}
+Detected Errors: ${(data.evaluationResult.errors || []).join('; ') || 'None'}
+Evaluation Method: ${data.evaluationResult.evaluationMethod || 'AI + MiniLM Hybrid'}
 
 ═══════════════════════════════════════════════
 FEEDBACK GENERATION RULES (STRICTLY ENFORCE):
@@ -398,31 +402,60 @@ FEEDBACK GENERATION RULES (STRICTLY ENFORCE):
    - DO NOT give generic feedback that could apply to any question
    - BE SPECIFIC about what the candidate said in THIS answer
 
-3. FORBIDDEN PHRASES (NEVER USE THESE):
+3. USE THE AI EVALUATOR AS THE SOURCE OF TRUTH:
+  - Base your feedback on the provided AI Evaluator Explanation and Detected Errors.
+  - You are formatting evaluator output only.
+  - Do NOT invent new correctness judgments.
+  - If Detected Errors is non-empty or Concept Score ≤ 3/10, explicitly state the answer is incorrect.
+  - Do NOT praise incorrect answers.
+  - The chat AI only formats feedback; it must not override the evaluator.
+   
+  WRONG ANSWER DETECTION PATTERNS - KEEP CONSISTENT WITH EVALUATOR:
+   - "Supervised learning... without labels" → WRONG (supervised REQUIRES labels)
+   - "Unsupervised learning... needs human labeling" → WRONG (unsupervised = no labels)
+   - "Gradient descent increases loss" → WRONG (it minimizes loss)
+   - "Overfitting = doesn't memorize enough" → WRONG (overfitting = too much memorization)
+   - "Early stopping = stop when training accuracy high" → WRONG (monitors validation loss)
+   - "Hyperparameters are learned during training" → WRONG (set before training)
+   - "Cross-validation = one random point" → WRONG (multiple splits)
+   - "Don't need train/test split" → WRONG (essential for evaluation)
+   - "Regularization reduces learning ability" → WRONG (prevents overfitting)
+   - "100% training accuracy is good" → WRONG (sign of overfitting)
+   
+   🚨 LLM HALLUCINATION PREVENTION:
+   - DO NOT assume the answer is correct just because it uses technical terms
+   - DO NOT praise clarity/structure if the content is factually wrong
+   - DO NOT be "encouraging" for incorrect answers - be HONEST
+   - The candidate needs to KNOW their answer is wrong, not feel good
+
+4. FORBIDDEN PHRASES (NEVER USE THESE):
    ❌ "provide more examples and metrics"
    ❌ "could be improved by"
    ❌ "it would be beneficial"
    ❌ "consider elaborating"
    ❌ "outlined your technical background" (unless that was the actual question)
    ❌ "identified common causes" (unless they actually did this)
+   ❌ "Strong technical knowledge" (if score < 60 or answer is wrong)
 
-4. PREVIOUS FEEDBACK (DO NOT REPEAT THESE):
+5. PREVIOUS FEEDBACK (DO NOT REPEAT THESE):
 ${previousFeedback}
    - DO NOT use similar phrasing or structure
    - Vary your feedback style
 
-5. TONE VARIATION:
+6. TONE VARIATION:
    - Score ≥ 80: "Excellent answer! [specific strength]. [tiny refinement area]"
    - Score 70-79: "[specific strength], but [specific improvement area]."
    - Score 60-69: "You covered [topic], but [specific gap]. [encouragement]"
    - Score < 60: "Your answer touched on [topic], but missed [key point]. Focus on [specific area]."
+   - Score < 40 + Wrong concept: "That explanation is incorrect. [state correct concept]. Review fundamentals."
 
-6. DO NOT HINT AT NEXT QUESTION: Feedback evaluates only the current answer.
+7. DO NOT HINT AT NEXT QUESTION: Feedback evaluates only the current answer.
 
 EXAMPLE GOOD FEEDBACK (Vary from these):
 - "Great systematic approach to troubleshooting! Adding specific tool names (like Wireshark or ping) would make it even stronger."
 - "You nailed the core concept, but a quick real-world example would really sell it."
 - "Solid breakdown of the steps — consider mentioning how you'd prioritize if time is limited."
+- "That definition of overfitting is incorrect - it's when the model learns noise in training data, reducing generalization. Review the fundamentals."
 
 ═══════════════════════════════════════════════
 NEXT QUESTION GENERATION RULES:

@@ -135,16 +135,16 @@ function getSkillFocusAreas(domains: UserDomain[]): string[] {
  */
 export function getDomainResourceMapping(domains: UserDomain[]): string[] {
   const resourceMap: Record<UserDomain, string[]> = {
-    "frontend": ["algorithm-design", "system-architecture"], // Core CS + architecture
-    "backend": ["algorithm-design", "system-architecture", "database-design"],
-    "fullstack": ["algorithm-design", "system-architecture", "database-design"],
-    "data-science": ["algorithm-design", "system-architecture"],
-    "devops": ["system-architecture", "database-design"],
-    "mobile": ["algorithm-design", "system-architecture"],
-    "machine-learning": ["algorithm-design", "system-architecture"],
-    "system-design": ["system-architecture", "database-design"],
-    "cybersecurity": ["algorithm-design", "system-architecture"],
-    "cloud": ["system-architecture", "database-design"]
+    "frontend": ["algorithm-design", "system-architecture", "role-frontend"],
+    "backend": ["algorithm-design", "system-architecture", "database-design", "role-backend"],
+    "fullstack": ["algorithm-design", "system-architecture", "database-design", "role-fullstack"],
+    "data-science": ["algorithm-design", "system-architecture", "role-data-science"],
+    "devops": ["system-architecture", "database-design", "role-devops"],
+    "mobile": ["algorithm-design", "system-architecture", "role-mobile"],
+    "machine-learning": ["algorithm-design", "system-architecture", "role-machine-learning"],
+    "system-design": ["system-architecture", "database-design", "role-system-design"],
+    "cybersecurity": ["algorithm-design", "system-architecture", "role-cybersecurity"],
+    "cloud": ["system-architecture", "database-design", "role-cloud"]
   }
   
   return Array.from(new Set(

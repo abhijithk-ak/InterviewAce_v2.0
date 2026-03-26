@@ -3,7 +3,9 @@
  * Handles question selection, progression, and greetings
  */
 
-export { QUESTION_BANK, MAX_QUESTIONS, type Question } from "./bank"
+import { QUESTION_BANK, MAX_QUESTIONS, type Question } from "./bank"
+
+export { QUESTION_BANK, MAX_QUESTIONS, type Question }
 
 export interface QuestionRequest {
   role: string
@@ -128,4 +130,13 @@ export function getGreeting(config: { role: string; type: string; difficulty: st
  */
 export function shouldShowGreeting(history: Array<{ role: string; content: string }>): boolean {
   return history.length === 0
+}
+
+export function findQuestionByText(text: string) {
+  const normalizedText = text.trim().toLowerCase()
+  return QUESTION_BANK.find((question) => question.text.trim().toLowerCase() === normalizedText)
+}
+
+export function getReferenceAnswer(questionText: string): string | undefined {
+  return findQuestionByText(questionText)?.sampleAnswer
 }

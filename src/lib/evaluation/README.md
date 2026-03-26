@@ -116,38 +116,15 @@ function clarityScore(answer: string): number {
 
 ---
 
-### 4. Technical Depth Scoring (`scorers.ts`, `keywords.ts`)
+### 4. Legacy Technical-Depth Scoring (Deprecated)
 
-**Academic Classification:** Domain-Specific Lexicon Matching
+The previous keyword-density `technicalScore` path has been removed from active evaluation.
+Current runtime scoring is based on:
+- AI concept correctness
+- MiniLM semantic similarity
+- AI clarity score
 
-**Implementation:**
-- **768+ curated keywords** across 6 domains:
-  - Frontend (React, hooks, state, optimization, etc.)
-  - Backend (Node.js, databases, APIs, microservices, etc.)
-  - Full Stack (end-to-end concepts)
-  - Data Science (ML, statistics, pandas, etc.)
-  - DevOps (Docker, Kubernetes, CI/CD, etc.)
-  - General (algorithms, design patterns, etc.)
-
-**Algorithm:**
-```typescript
-function technicalScore(answer: string, domainKeywords: string[]): number {
-  const tokens = preprocess(answer).join(" ")
-  
-  let matches = 0
-  for (const keyword of domainKeywords) {
-    if (tokens.includes(keyword.toLowerCase())) matches++
-  }
-  
-  const coverage = matches / Math.sqrt(domainKeywords.length)
-  return Math.min(coverage * 50, 100)
-}
-```
-
-**Rationale:** 
-- Uses **logarithmic scaling** to avoid unrealistic keyword density requirements
-- Proves domain knowledge through vocabulary usage
-- Fully transparent and auditable
+This avoids over-rewarding terminology density and keeps grading aligned with conceptual correctness.
 
 ---
 

@@ -7,21 +7,50 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { UserSettingsModel } from "@/lib/db/models/UserSettings"
-import { SessionModel } from "@/lib/db/models/Session"
+
+const DEFAULT_SETTINGS = {
+  aiModel: "meta-llama/llama-3.2-3b-instruct:free",
+  aiTemperature: 0.7,
+  interviewLength: 5,
+  voiceQuestionsEnabled: true,
+  videoRecordingEnabled: true,
+  showScoreExplanation: true,
+  theme: "dark" as const,
+}
+
+function mapSettings(settings: {
+  aiModel: string
+  aiTemperature: number
+  interviewLength: number
+  voiceQuestionsEnabled: boolean
+  videoRecordingEnabled: boolean
+  showScoreExplanation: boolean
+  theme: "dark" | "light"
+}) {
+  return {
+    aiModel: settings.aiModel,
+    aiTemperature: settings.aiTemperature,
+    interviewLength: settings.interviewLength,
+    voiceQuestionsEnabled: settings.voiceQuestionsEnabled,
+    videoRecordingEnabled: settings.videoRecordingEnabled,
+    showScoreExplanation: settings.showScoreExplanation,
+    theme: settings.theme,
+  }
+}
 
 /**
  * GET /api/settings - Fetch user settings from MongoDB
  */
 export async function GET(req: NextRequest) {
-  try {
-    const session = await auth()
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "Authentication required", success: false },
-        { status: 401 }
-      )
-    }
+  const session = await auth()
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Authentication required", success: false },
+      { status: 401 }
+    )
+  }
 
+  try {
     await connectDB()
 
     // Get or create settings for this user
@@ -29,26 +58,17 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        aiModel: settings.aiModel,
-        aiTemperature: settings.aiTemperature,
-        interviewLength: settings.interviewLength,
-        voiceQuestionsEnabled: settings.voiceQuestionsEnabled,
-        videoRecordingEnabled: settings.videoRecordingEnabled,
-        scoringMode: settings.scoringMode,
-        showScoreExplanation: settings.showScoreExplanation,
-        theme: settings.theme,
-      },
+      data: mapSettings(settings),
+      source: "database",
     })
   } catch (error) {
     console.error("Settings GET error:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch settings",
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      success: true,
+      data: DEFAULT_SETTINGS,
+      source: "fallback-defaults",
+      warning: "Database unavailable. Showing default settings.",
+    })
   }
 }
 
@@ -72,10 +92,6 @@ export async function PUT(req: NextRequest) {
     // Get or create settings
     const settings = await UserSettingsModel.getOrCreate(session.user.email)
 
-    // Track scoring mode changes for research
-    const oldScoringMode = settings.scoringMode
-    const newScoringMode = body.scoringMode
-
     // Update fields (validate before saving)
     if (body.aiModel !== undefined) settings.aiModel = body.aiModel
     if (body.aiTemperature !== undefined) {
@@ -92,11 +108,6 @@ export async function PUT(req: NextRequest) {
     if (body.videoRecordingEnabled !== undefined) {
       settings.videoRecordingEnabled = Boolean(body.videoRecordingEnabled)
     }
-    if (body.scoringMode !== undefined) {
-      if (["deterministic", "hybrid"].includes(body.scoringMode)) {
-        settings.scoringMode = body.scoringMode
-      }
-    }
     if (body.showScoreExplanation !== undefined) {
       settings.showScoreExplanation = Boolean(body.showScoreExplanation)
     }
@@ -108,44 +119,19 @@ export async function PUT(req: NextRequest) {
 
     await settings.save()
 
-    // Track scoring mode change for research
-    if (oldScoringMode !== newScoringMode) {
-      // Count how many sessions user has completed
-      const sessionCount = await SessionModel.countDocuments({
-        userEmail: session.user.email,
-      })
-
-      await settings.trackScoringModeChange(newScoringMode, sessionCount)
-
-      console.log(
-        `📊 Scoring mode changed: ${oldScoringMode} → ${newScoringMode} (after ${sessionCount} sessions)`
-      )
-    }
-
     return NextResponse.json({
       success: true,
-      data: {
-        aiModel: settings.aiModel,
-        aiTemperature: settings.aiTemperature,
-        interviewLength: settings.interviewLength,
-        voiceQuestionsEnabled: settings.voiceQuestionsEnabled,
-        videoRecordingEnabled: settings.videoRecordingEnabled,
-        scoringMode: settings.scoringMode,
-        showScoreExplanation: settings.showScoreExplanation,
-        theme: settings.theme,
-      },
-      message: oldScoringMode !== newScoringMode
-        ? `Scoring mode changed to ${newScoringMode}. Run new interviews to collect comparative data.`
-        : "Settings updated successfully",
+      data: mapSettings(settings),
+      message: "Settings updated successfully",
     })
   } catch (error) {
     console.error("Settings PUT error:", error)
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to update settings",
+        error: "Database unavailable. Could not save settings right now.",
       },
-      { status: 500 }
+      { status: 503 }
     )
   }
 }

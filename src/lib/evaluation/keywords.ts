@@ -442,6 +442,10 @@ export const DOMAIN_KEYWORDS: Record<string, string[]> = {
  * Get relevant keywords based on role and interview type
  */
 export function getRelevantKeywords(role: string, type: string): string[] {
+  // Runtime correctness evaluation no longer depends on keyword libraries.
+  // Keep the data only for legacy demos and research inspection.
+  return []
+
   const roleLower = role.toLowerCase()
   
   // Map role names to keyword categories

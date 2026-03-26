@@ -1,6 +1,6 @@
 /**
- * Algorithmic Evaluation Engine
- * Export all evaluation components
+ * Algorithmic Evaluation Engine (Enhanced v3.0)
+ * Export all evaluation components including misconception detection
  */
 
 export { 
@@ -23,7 +23,6 @@ export type {
 export { 
   relevanceScore,
   clarityScore, 
-  technicalScore,
   confidenceScore,
   structureScore 
 } from "./scorers"
@@ -31,3 +30,24 @@ export {
 export { preprocess, extractSentences, wordCount, avgSentenceLength } from "./preprocessor"
 export { getRelevantKeywords, DOMAIN_KEYWORDS } from "./keywords"
 export { normalizeSubscore, normalizeOverall, clamp, migrateSubscore } from "./normalize"
+
+// NEW: Misconception detection (v3.0)
+export { 
+  detectMisconceptions, 
+  inferDomain, 
+  calculateMisconceptionPenalty,
+  MISCONCEPTION_PATTERNS
+} from "./misconceptions"
+export type { MisconceptionPenalty } from "./misconceptions"
+
+// NEW: Concept validation (v3.0 - Critical correctness layer)
+export {
+  validateConcepts,
+  detectNegationMisconceptions,
+  hasCriticalError,
+  calculateConceptPenalty
+} from "./concepts"
+export type { ConceptValidation } from "./concepts"
+
+export { evaluateWithAI } from "./aiEvaluator"
+export type { AIEvaluationResult } from "./aiEvaluator"

@@ -7,6 +7,7 @@ import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { SessionModel } from "@/lib/db/models/Session"
 import { auth } from "@/lib/auth"
 import { getPersonalizedRecommendations, type RecommendationContext } from "@/lib/recommendation-engine"
+import { migrateSubscore } from "@/lib/evaluation/normalize"
 
 async function getLearningData(userEmail: string) {
   await connectDB()
@@ -30,45 +31,56 @@ async function getLearningData(userEmail: string) {
     if (totalSessions > 0) {
       // Calculate real skill averages from sessions
       const skillData = {
-        technical: [] as number[],
+        knowledgeAccuracy: [] as number[],
+        overall: [] as number[],
         confidence: [] as number[],
         clarity: [] as number[],
-        communication: [] as number[]
       }
 
       sessions.forEach(session => {
         session.questions.forEach((question: any) => {
-          if (question.evaluation) {
-            if (question.evaluation.technical_depth) {
-              skillData.technical.push(question.evaluation.technical_depth)
-            }
-            if (question.evaluation.confidence) {
-              skillData.confidence.push(question.evaluation.confidence)
-            }
-            if (question.evaluation.clarity) {
-              skillData.clarity.push(question.evaluation.clarity)
-            }
-            if (question.evaluation.score) {
-              skillData.communication.push(question.evaluation.score)
-            }
+          const normalized = getNormalizedQuestionScores(question)
+
+          if (normalized.concept != null) {
+            skillData.knowledgeAccuracy.push(normalized.concept)
+          }
+
+          if (normalized.overall != null) {
+            skillData.overall.push(normalized.overall)
+          }
+
+          if (normalized.clarity != null) {
+            skillData.clarity.push(normalized.clarity)
+          }
+
+          const confidenceProxy = firstDefined(
+            normalized.overall,
+            normalized.concept != null && normalized.clarity != null
+              ? (normalized.concept + normalized.clarity) / 2
+              : null
+          )
+
+          if (confidenceProxy != null) {
+            skillData.confidence.push(confidenceProxy)
           }
         })
       })
 
       // Calculate averages
+      const fallback = Math.max(1, roundToOneDecimal(averageScoreToTen(sessions)))
       const skillAverages = {
-        technical: skillData.technical.length > 0 
-          ? Math.round(skillData.technical.reduce((a, b) => a + b, 0) / skillData.technical.length) 
-          : 5,
-        communication: skillData.communication.length > 0 
-          ? Math.round(skillData.communication.reduce((a, b) => a + b, 0) / skillData.communication.length) 
-          : 5,
+        knowledgeAccuracy: skillData.knowledgeAccuracy.length > 0 
+          ? roundToOneDecimal(skillData.knowledgeAccuracy.reduce((a, b) => a + b, 0) / skillData.knowledgeAccuracy.length) 
+          : fallback,
+        overall: skillData.overall.length > 0 
+          ? roundToOneDecimal(skillData.overall.reduce((a, b) => a + b, 0) / skillData.overall.length) 
+          : fallback,
         confidence: skillData.confidence.length > 0 
-          ? Math.round(skillData.confidence.reduce((a, b) => a + b, 0) / skillData.confidence.length) 
-          : 5,
+          ? roundToOneDecimal(skillData.confidence.reduce((a, b) => a + b, 0) / skillData.confidence.length) 
+          : fallback,
         clarity: skillData.clarity.length > 0 
-          ? Math.round(skillData.clarity.reduce((a, b) => a + b, 0) / skillData.clarity.length) 
-          : 5
+          ? roundToOneDecimal(skillData.clarity.reduce((a, b) => a + b, 0) / skillData.clarity.length) 
+          : fallback
       }
 
       const scoresSum = sessions.reduce((sum, session) => sum + (session.overallScore || 0), 0)
@@ -288,7 +300,7 @@ export default async function LearningHubPage() {
                 {Object.entries(analytics!.skillBreakdown).map(([skill, score]) => (
                   <div key={skill} className="bg-neutral-800/50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-white">{score}/10</p>
-                    <p className="text-xs text-neutral-300 capitalize">{skill}</p>
+                    <p className="text-xs text-neutral-300">{getSkillLabel(skill)}</p>
                   </div>
                 ))}
               </div>
@@ -351,7 +363,7 @@ export default async function LearningHubPage() {
                           .slice(0, 2)
                           .map(([skill, score]) => (
                           <div key={skill} className="flex items-center justify-between bg-neutral-800 rounded px-3 py-2">
-                            <span className="text-white capitalize">{skill}</span>
+                            <span className="text-white">{getSkillLabel(skill)}</span>
                             <span className={`text-sm font-medium ${
                               score < 5 ? 'text-red-400' : score < 7 ? 'text-yellow-400' : 'text-green-400'
                             }`}>
@@ -376,9 +388,14 @@ export default async function LearningHubPage() {
                 {(() => {
                   const skills = Object.entries(analytics!.skillBreakdown)
                   const weakestSkill = skills.reduce((min, skill) => skill[1] < min[1] ? skill : min)
-                  const targetCategory = LEARNING_RESOURCES.find(cat => 
-                    cat.name.toLowerCase().includes(weakestSkill[0]) ||
-                    cat.id.includes(weakestSkill[0])
+                  const targetCategoryBySkill: Record<string, string> = {
+                    knowledgeAccuracy: 'algorithm-design',
+                    overall: 'system-architecture',
+                    confidence: 'confidence-building',
+                    clarity: 'communication-clarity',
+                  }
+                  const targetCategory = LEARNING_RESOURCES.find(
+                    (cat) => cat.id === targetCategoryBySkill[weakestSkill[0]]
                   ) || LEARNING_RESOURCES[0]
                   
                   return (
@@ -388,7 +405,7 @@ export default async function LearningHubPage() {
                         <div>
                           <h3 className="text-lg font-semibold text-white">Priority Focus Area</h3>
                           <p className="text-neutral-300 text-sm">
-                            Your {weakestSkill[0]} skills need attention (scored {weakestSkill[1]}/10)
+                            Your {getSkillLabel(weakestSkill[0])} needs attention (scored {weakestSkill[1]}/10)
                           </p>
                         </div>
                       </div>
@@ -463,4 +480,70 @@ export default async function LearningHubPage() {
       </div>
     </div>
   )
+}
+
+function averageScoreToTen(sessions: Array<{ overallScore?: number }>) {
+  const valid = sessions
+    .map((session) => session.overallScore)
+    .filter((score): score is number => typeof score === "number" && Number.isFinite(score))
+
+  if (valid.length === 0) return 5
+  return valid.reduce((sum, score) => sum + score, 0) / valid.length / 10
+}
+
+function roundToOneDecimal(value: number) {
+  return Math.round(value * 10) / 10
+}
+
+function getNormalizedQuestionScores(question: any) {
+  const evaluation = question?.evaluation ?? {}
+  const metrics = question?.metrics ?? {}
+  const breakdown = evaluation.breakdown ?? {}
+
+  const conceptRaw = firstDefined(
+    metrics.conceptScore,
+    breakdown.conceptScore,
+    evaluation.conceptScore,
+    evaluation.technical_depth
+  )
+  const semanticRaw = firstDefined(
+    metrics.semanticScore,
+    breakdown.semanticScore,
+    evaluation.semanticScore,
+    evaluation.score
+  )
+  const clarityRaw = firstDefined(
+    metrics.clarityScore,
+    breakdown.clarityScore,
+    evaluation.clarityScore,
+    evaluation.clarity
+  )
+  const overallRaw = firstDefined(
+    metrics.overallScore,
+    metrics.finalScore,
+    evaluation.overallScore,
+    evaluation.finalScore,
+    evaluation.score
+  )
+
+  return {
+    concept: conceptRaw == null ? null : migrateSubscore(conceptRaw),
+    semantic: semanticRaw == null ? null : migrateSubscore(semanticRaw),
+    clarity: clarityRaw == null ? null : migrateSubscore(clarityRaw),
+    overall: overallRaw == null ? null : migrateSubscore(overallRaw),
+  }
+}
+
+function firstDefined(...values: Array<number | null | undefined>) {
+  return values.find((value): value is number => typeof value === "number" && Number.isFinite(value))
+}
+
+function getSkillLabel(skill: string) {
+  const map: Record<string, string> = {
+    knowledgeAccuracy: 'Knowledge Accuracy',
+    overall: 'Overall',
+    confidence: 'Confidence',
+    clarity: 'Clarity',
+  }
+  return map[skill] || skill
 }

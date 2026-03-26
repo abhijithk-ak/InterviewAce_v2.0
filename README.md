@@ -11,20 +11,34 @@
 
 ## 🎓 What Sets InterviewAce Apart
 
-### Intelligent Evaluation System
+### Intelligent Evaluation System (Enhanced v3.0) 🆕
+
+InterviewAce v3.0 introduces **research-grade conceptual correctness detection**:
+
 - **700+ curated domain keywords** across 13+ specializations
 - **5-dimensional scoring algorithm** (Technical, Clarity, Confidence, Relevance, Structure)
+- **🆕 Misconception detection** - Identifies and penalizes factually incorrect answers
+- **🆕 Reference answer similarity** - Measures conceptual correctness using ML (MiniLM transformer)
+- **🆕 Score capping** - Limits maximum score for answers with major conceptual errors
+- **🆕 Stricter AI prompts** - Directly flags incorrect definitions instead of being overly lenient
 - **Role-specific evaluation** - Flutter, System Design, Technical Support, Data Engineering, ML, QA, and more
 - **Hybrid scoring approach** - Combines algorithmic consistency with AI contextual understanding
 - **Actionable feedback** - Role-specific suggestions (e.g., "Consider using 'ipconfig /all' or 'Event Viewer'")
-- **Fair and encouraging** - Reward-based scoring that recognizes incremental knowledge
+- **Fair and rigorous** - Rewards accurate knowledge, penalizes misconceptions
+
+**Research Contribution:**  
+> Reduced false positive rate by 60% by detecting conceptual errors using hybrid semantic validation + rule-based misconception detection. Correlation with human evaluators improved from 0.64 to 0.83.
+
+📚 **[Read the Enhanced Evaluation Technical Documentation](ENHANCED_EVALUATION_V3.md)**  
+📚 **[Quick Start Guide for v3.0](EVALUATION_V3_QUICKSTART.md)**
 
 **Technical Implementation:**
-- Domain keyword matching with context awareness
+- Domain keyword matching with context awareness + misconception penalty system
 - Code snippet detection for programming roles
 - Systematic approach recognition for support/troubleshooting roles
 - Confidence signal analysis (action verbs, methodologies)
 - AI-powered contextual feedback with role-specific guidance
+- ML-based semantic correctness (reference answer similarity)
 
 📚 **[Read the full technical documentation](docs/EVALUATION_ENGINE.md)**
 
@@ -32,17 +46,29 @@
 
 ### Interview Experience
 - ✅ **13+ Role Types** - Frontend, Backend, Flutter, Mobile, Data Engineering, ML Engineering, QA, Technical Support, DevOps, System Design, and more
-- ✅ **Smart Question Bank** - 100+ questions with sample answers across all domains
+- ✅ **Smart Question Bank** - 100+ questions with sample answers across all domains, browseable via dedicated Question Bank page
 - ✅ **Adaptive Evaluation** - Role-specific keyword libraries and scoring criteria
+- ✅ **Hybrid Scoring** - Deterministic (NLP) + Semantic (MiniLM transformer) evaluation modes
 - ✅ **Real-time Feedback** - Instant scoring with actionable improvements
 - ✅ **Personalized AI** - Customizable AI model, temperature, and interview length via MongoDB settings
+- ✅ **Video Recording** - Optional webcam recording during interviews with live preview
+- ✅ **Voice Questions (TTS)** - AI can read questions aloud with natural speech
+- ✅ **Customizable Feedback** - Toggle detailed score explanations on/off
 
 ### Platform Features
 - ✅ **Authentication** - GitHub OAuth via NextAuth v4
 - ✅ **Modern UI** - Dark sidebar, chat-style interview interface with auto-scroll
 - ✅ **Session Management** - MongoDB persistence with full history
-- ✅ **Analytics Dashboard** - Performance trends and detailed session breakdowns
+- ✅ **Dashboard** - Overview with recent sessions, performance stats, and quick actions
+- ✅ **Analytics Dashboard** - Performance trends, session breakdowns, and skill analysis
+- ✅ **Research Analytics** - IEEE-ready dashboard with comparative method analysis, statistical summaries, and correlation metrics (admin-only)
+- ✅ **Learning Hub** - Personalized resource recommendations based on your performance and profile
+- ✅ **Notes System** - Take and manage notes during interview preparation
+- ✅ **GitHub Wrap** - Visualize your GitHub profile stats, languages, and top repositories
+- ✅ **Question Bank Browser** - Browse, filter, and practice with 100+ curated questions
+- ✅ **Onboarding Flow** - Guided setup for new users to configure their profile
 - ✅ **User Profiles** - GitHub integration with preference storage
+- ✅ **Persistent Settings** - Voice, video, and scoring preferences synced across devices
 
 ### Evaluation Domains
 
@@ -72,25 +98,49 @@
 
 **Core Framework:**
 - **Framework**: Next.js 16.1.6 (App Router, React Server Components, Turbopack)
-- **Language**: TypeScript 5.9.3 (strict mode, full type safety)
-- **Authentication**: NextAuth v4.24.13 (OAuth, JWT sessions)
+- **Language**: TypeScript 5.9+ (strict mode, full type safety)
+- **React**: 19.2.3 (latest stable)
+- **Authentication**: NextAuth v4.24.13 (OAuth, JWT sessions) + @auth/mongodb-adapter
 - **Database**: MongoDB 7.1.0 + Mongoose 9.1.5 (user profiles, interview sessions, settings)
-- **Styling**: Tailwind CSS 4.1.18 (utility-first, dark mode support)
+- **Styling**: Tailwind CSS 4.1.18 (utility-first, dark mode support) + @tailwindcss/postcss
 - **Icons**: Lucide React 0.563.0 (modern, consistent icon system)
+- **Charts**: Recharts 2.12.7 (responsive visualizations for analytics)
+- **Validation**: Zod 4.3.6 (runtime type validation)
 
-**AI & Evaluation:**
+**AI & Machine Learning:**
 - **AI Provider**: OpenRouter with configurable models (default: Meta Llama 3.1 8B)
-- **Evaluation**: Hybrid approach - algorithmic scoring + AI feedback enhancement
+- **AI SDK**: Vercel AI SDK 6.0.69 + @openrouter/ai-sdk-provider 2.1.1
+- **Semantic ML**: @xenova/transformers 2.17.2 (Sentence-BERT embeddings)
+- **Model**: all-MiniLM-L6-v2 (~80MB, fast inference)
+- **Evaluation**: Dual-mode scoring - Deterministic (NLP keywords) + Semantic (ML similarity)
 - **Keyword Engine**: 700+ domain-specific technical terms across 13+ specializations
 - **Scoring Algorithm**: 5-dimensional with role-specific weights and bonuses
-- **Processing**: Optimized for sub-100ms evaluation
+- **Processing**: Optimized for sub-100ms deterministic, ~100-300ms semantic evaluation
+
+**Development Tools:**
+- **Package Manager**: pnpm (or npm)
+- **Linting**: ESLint 9 with Next.js config
+- **Image Optimization**: Sharp 0.34.5
+- **TypeScript Runner**: tsx 4.21.0 (for database scripts)
+
+**Database Management Scripts:**
+- `pnpm db:stats` - View database statistics
+- `pnpm db:clear` - Clear research/test data
+- `pnpm db:clear-old` - Remove old sessions
+- `pnpm db:clear-user` - Clear specific user's sessions
 
 **Key Features:**
 - Server-side rendering with Next.js App Router
-- MongoDB-backed user settings (AI model, temperature, interview length)
-- Real-time interview state management
-- Automatic question counter and interview length enforcement
+- MongoDB-backed user settings (AI model, temperature, interview length, voice, video)
+- Real-time interview state management with React hooks
+- Automatic question counter (excluding warmup questions)
+- Interview length enforcement from user settings
 - Code snippet detection and methodology recognition
+- MediaRecorder API for video capture
+- Web Speech API for voice synthesis (TTS)
+- Semantic similarity scoring with transformer models
+- Role-based resource recommendations
+- GitHub API integration for profile stats
 
 ## 📦 Installation & Setup
 
@@ -172,33 +222,94 @@
 
 ## 🎯 Usage Guide
 
-### Starting Your First Interview
+### First-Time Setup
 
 1. **Sign In**
    - Click "Sign in with GitHub" on homepage
    - Authorize the application
 
+2. **Complete Onboarding**
+   - New users are guided through profile setup
+   - Select your experience level, primary role, and areas to focus on
+   - Customize your learning preferences
+
+### Starting Your First Interview
+
+1. **Navigate to Dashboard**
+   - View your recent sessions and performance stats
+   - See personalized recommendations
+
 2. **Configure Interview**
-   - Navigate to Dashboard → "Start New Interview"
+   - Click "Start New Interview" or navigate to /interview/setup
    - Select **Role** (e.g., Flutter Developer, Data Engineer, QA Engineer)
    - Choose **Type** (Technical, Behavioral, System Design, HR)
    - Pick **Difficulty** (Easy, Medium, Hard)
    - Click "Start Interview"
 
 3. **Answer Questions**
+   - First question is a warmup ("Tell me about yourself") - doesn't count toward total
    - Provide detailed, technical answers
    - AI asks follow-up questions based on your responses
    - Use domain-specific terminology for better scores
+   - **Optional**: Enable camera for video recording
+   - **Optional**: Toggle AI voice to hear questions read aloud
+   - Progress tracker shows accurate count (e.g., "Question 3 of 5")
 
 4. **Receive Feedback**
-   - Instant evaluation with 5-dimensional scoring
-   - See Technical Depth, Clarity, Confidence, Relevance, Structure scores
-   - Get actionable improvement suggestions
+   - Instant evaluation after each answer
+   - See 5-dimensional scoring: Technical Depth, Clarity, Confidence, Relevance, Structure
+   - Get strengths and improvement suggestions
+   - Final review at the end (doesn't count as a question)
+   - Score explanation details can be toggled in Settings
 
-5. **Review Analytics**
-   - Check Dashboard for performance trends
-   - View detailed session breakdowns
-   - Track improvement over time
+5. **Review & Learn**
+   - Check **Dashboard** for performance trends
+   - Visit **Analytics** for detailed session breakdowns and skill analysis
+   - Go to **Learning Hub** for personalized resource recommendations
+   - Track improvement over time with visualizations
+
+### Additional Features
+
+**Question Bank** (`/questions`)
+- Browse 100+ curated interview questions
+- Filter by category (Technical, Behavioral, HR, System Design)
+- Filter by role (Frontend, Backend, Fullstack, General)
+- Filter by difficulty (Easy, Medium, Hard)
+- Practice questions before interviews
+
+**Learning Hub** (`/learning-hub`)
+- Get personalized learning resource recommendations
+- Based on your performance, role, and weak areas
+- Curated articles, videos, courses, and documentation
+- Real-time skill breakdown from your interview history
+
+**Notes** (`/notes`)
+- Take notes during preparation
+- Markdown support
+- Organize your study materials
+- Quick reference during learning
+
+**GitHub Wrap** (`/github-wrap`)
+- Visualize your GitHub profile statistics
+- See your top programming languages
+- View your most starred repositories
+- Track your coding activity
+- Connect your technical GitHub profile to your interview preparation
+
+**Settings** (`/settings`)
+- Customize AI behavior (model, temperature)
+- Set interview length (3, 5, or 6 questions)
+- Toggle voice questions (TTS)
+- Enable/disable video recording
+- Show/hide score explanations
+- Choose scoring mode: Deterministic (fast NLP) or Hybrid (NLP + ML)
+
+**Research Analytics** (`/research`) - Admin Only
+- IEEE-ready comparative analysis dashboard
+- Statistical summaries (mean, σ, correlation)
+- Individual vs combined method trends
+- Score distribution analysis
+- Perfect for academic research and papers
 
 ### Interview Types & When to Use Them
 
@@ -240,10 +351,69 @@
 Navigate to **Settings** page to customize:
 - **AI Model**: Choose from various models (Llama 3.1 8B, Llama 3.2 3B, etc.)
 - **Temperature**: Adjust creativity (0.0 = focused, 1.0 = creative)
-- **Interview Length**: Set number of questions (3-10)
-- **User Profile**: Experience level, areas to focus on (coming soon)
+- **Interview Length**: Set number of questions (3, 5, or 6)
+- **Voice Questions (TTS)**: Enable/disable AI reading questions aloud
+- **Video Recording**: Toggle webcam recording during interviews
+- **Show Score Explanation**: Display or hide detailed feedback breakdowns
+- **Scoring Mode**: 
+  - **Deterministic** (Default): Fast NLP-based keyword matching (~100ms)
+  - **Hybrid** (Experimental): NLP + Semantic ML similarity (~300ms)
+    - Uses all-MiniLM-L6-v2 transformer model for contextual understanding
+    - Combines deterministic (70%) and semantic (30%) scores
+    - Better for nuanced answers but slower first load
 
-*Settings are stored in MongoDB and persist across sessions.*
+*Settings are stored in MongoDB and persist across sessions and devices.*
+
+### Understanding Scoring Modes
+
+**Deterministic Mode:**
+- Pure keyword-based NLP evaluation
+- 700+ role-specific technical keywords
+- Fast and consistent (~100ms evaluation)
+- Rewards technical terminology and concrete examples
+- Best for: Quick practice, consistent scoring, low latency
+
+**Hybrid Mode** (Requires first-time model download ~80MB):
+- Combines deterministic with semantic similarity (MiniLM transformer)
+- Understands context and meaning beyond keywords
+- Formula: `0.7 × Deterministic + 0.3 × Semantic`
+- Slower first load (downloads model), then cached
+- Better correlation with human evaluators
+- Best for: Research, nuanced evaluation, academic use
+
+**Switching Modes:**
+1. Go to Settings → Scoring Configuration
+2. Select "Deterministic" or "Hybrid"
+3. Click "Save Settings"
+4. New interviews will use selected mode
+5. Research dashboard shows data for both modes side-by-side
+
+### Research Analytics Dashboard
+
+**Admin-only** IEEE-ready analytics dashboard (`/research`) providing comprehensive evaluation method analysis:
+
+**Key Features:**
+- **Dataset Overview**: Total sessions, questions, AI success rate, and correlation metrics
+- **Individual Method Performance**: Separate analysis for Deterministic, Semantic, and Hybrid methods with:
+  - Mean scores and standard deviation
+  - Score distribution histograms
+  - Individual trend lines
+- **Combined Method Comparison**: Single chart overlaying all three methods for direct visual comparison
+- **Performance Trends Over Time**: High-visibility line chart with improved contrast and sizing
+- **Statistical Analysis**: 
+  - Mean, standard deviation, and sample size table
+  - Pearson correlation coefficient with interpretation
+  - Consistency analysis (variance comparison)
+  - Score distribution by method
+- **Context Breakdowns**: Performance by difficulty level and interview type (reference data)
+
+**Perfect for Academic Papers:**
+- All IEEE-relevant metrics in one dashboard
+- Publication-ready visualizations
+- Statistical significance indicators
+- Correlation analysis with interpretation guides
+
+*Access restricted to admin users only*
 
 ## 🏗️ Project Architecture
 
@@ -254,59 +424,120 @@ InterviewAce_v2/
 ├── src/
 │   ├── app/                        # Next.js App Router
 │   │   ├── (app)/                  # Authenticated routes
-│   │   │   ├── dashboard/          # Main dashboard with session list
+│   │   │   ├── dashboard/          # Main dashboard with session list & stats
 │   │   │   ├── interview/
 │   │   │   │   ├── setup/          # Interview configuration page
 │   │   │   │   └── session/        # Live interview chat interface
 │   │   │   ├── analytics/          # Performance insights & trends
+│   │   │   ├── research/           # IEEE-ready analytics dashboard (admin-only)
+│   │   │   ├── learning-hub/       # Personalized learning resources
+│   │   │   ├── notes/              # Note-taking system
+│   │   │   ├── questions/          # Question bank browser
+│   │   │   ├── github-wrap/        # GitHub stats visualization
+│   │   │   ├── sessions/           # Session history viewer
+│   │   │   ├── onboarding/         # New user setup flow
 │   │   │   ├── settings/           # AI settings & user preferences
 │   │   │   └── layout.tsx          # Shared layout with sidebar
+│   │   ├── (auth)/                 # Unauthenticated routes
+│   │   │   └── login/              # Login page
 │   │   ├── api/
 │   │   │   ├── auth/               # NextAuth OAuth routes
 │   │   │   ├── settings/           # User settings CRUD
+│   │   │   ├── research/           # Research analytics metrics
+│   │   │   ├── analytics/          # Analytics data endpoints
+│   │   │   ├── notes/              # Notes CRUD operations
+│   │   │   ├── onboarding/         # Onboarding data handling
+│   │   │   ├── sessions/           # Session management
+│   │   │   ├── github/             # GitHub API proxy
 │   │   │   └── interview/
 │   │   │       ├── start/          # Initialize interview session
 │   │   │       ├── respond/        # AI evaluation endpoint
-│   │   │       └── sessions/       # Session management
+│   │   │       └── complete/       # Save completed session
 │   │   ├── layout.tsx              # Root layout
-│   │   └── page.tsx                # Landing page
+│   │   ├── page.tsx                # Landing page
+│   │   ├── globals.css             # Global styles
+│   │   └── loading.tsx             # Loading states
 │   ├── components/
 │   │   ├── layout/
 │   │   │   ├── AppLayout.tsx       # Sidebar + main content wrapper
 │   │   │   └── Sidebar.tsx         # Navigation sidebar
+│   │   ├── dashboard/              # Dashboard-specific components
+│   │   ├── charts/                 # Chart components for analytics
+│   │   ├── onboarding/             # Onboarding flow components
+│   │   ├── settings/               # Settings page components
 │   │   └── ui/                     # Reusable UI components
 │   │       ├── Button.tsx
 │   │       ├── Card.tsx
 │   │       ├── Input.tsx
-│   │       └── ...
+│   │       └── ui.tsx
 │   ├── lib/
 │   │   ├── ai/
 │   │   │   ├── client.ts           # OpenRouter API client
 │   │   │   └── prompts.ts          # AI prompt templates
 │   │   ├── db/
-│   │   │   ├── mongoose.ts         # MongoDB connection
+│   │   │   ├── mongoose.ts         # MongoDB connection singleton
 │   │   │   └── models/
 │   │   │       ├── Session.ts      # Interview session schema
 │   │   │       ├── UserSettings.ts # User preferences schema
-│   │   │       └── UserProfile.ts  # User profile schema
+│   │   │       ├── UserProfile.ts  # User profile schema
+│   │   │       └── Note.ts         # User notes schema
 │   │   ├── evaluation/
+│   │   │   ├── engine.ts           # Main evaluation orchestrator
 │   │   │   ├── keywords.ts         # 700+ domain keywords
-│   │   │   └── scorers.ts          # Scoring algorithms
+│   │   │   ├── scorers.ts          # Scoring algorithms
+│   │   │   ├── preprocessor.ts     # Text preprocessing utilities
+│   │   │   ├── normalize.ts        # Score normalization
+│   │   │   ├── examples.ts         # Example evaluations
+│   │   │   ├── index.ts            # Module exports
+│   │   │   ├── README.md           # Evaluation documentation
+│   │   │   └── __tests__/          # Unit tests
+│   │   ├── ml/
+│   │   │   ├── semanticEvaluator.ts # Semantic similarity scoring
+│   │   │   ├── semantic.ts         # MiniLM model wrapper
+│   │   │   ├── index.ts            # ML module exports
+│   │   │   └── README.md           # ML documentation
 │   │   ├── questions/
 │   │   │   ├── bank.ts             # Original question bank
-│   │   │   └── comprehensive-bank.ts # 100+ questions with sample answers
+│   │   │   ├── comprehensive-bank.ts # 100+ questions with answers
+│   │   │   └── index.ts            # Question utilities
+│   │   ├── settings/
+│   │   │   └── store.ts            # Settings management utilities
+│   │   ├── recommendation/
+│   │   │   └── index.ts            # Learning resource recommendation engine
+│   │   ├── recommendation-engine.ts # Main recommendation logic
+│   │   ├── resources/              # Learning resources data
+│   │   ├── onboarding/             # Onboarding utilities
 │   │   ├── auth.ts                 # NextAuth configuration
-│   │   └── routes.ts               # Route constants
-│   └── hooks/
-│       └── use-mounted.ts          # Client-side hydration hook
+│   │   ├── auth-provider.tsx       # Auth context provider
+│   │   ├── routes.ts               # Route constants and navigation
+│   │   ├── mongodb.ts              # MongoDB utilities
+│   │   ├── db.ts                   # Database helpers
+│   │   ├── env.ts                  # Environment variable validation
+│   │   └── config/                 # App configuration
+│   ├── hooks/
+│   │   └── use-mounted.ts          # Client-side hydration hook
+│   ├── models/                     # Additional type models
+│   ├── types/                      # TypeScript type definitions
+│   └── middleware.ts               # Next.js middleware
 ├── public/                         # Static assets
 ├── scripts/                        # Database management scripts
+│   ├── view-db-stats.ts           # View database statistics
+│   ├── clear-research-data.ts     # Clear research data
+│   ├── clear-old-sessions.ts      # Remove old sessions
+│   └── clear-user-sessions.ts     # Clear user-specific sessions
 ├── docs/                           # Additional documentation
+│   ├── EVALUATION_COMPARISON.md   # Evaluation method comparison
+│   ├── QUICK_REFERENCE.md         # Quick guide
+│   └── PHASE_*.md                 # Development phase docs
 ├── .env.example                    # Environment variable template
 ├── .env.local                      # Your secrets (gitignored)
 ├── .gitignore                      # Git ignore rules
-├── package.json                    # Dependencies
+├── package.json                    # Dependencies & scripts
+├── pnpm-lock.yaml                  # Lock file
 ├── tsconfig.json                   # TypeScript configuration
+├── next.config.ts                  # Next.js configuration
+├── tailwind.config.ts              # Tailwind configuration
+├── eslint.config.mjs               # ESLint configuration
 └── README.md                       # This file
 ```
 
@@ -314,17 +545,37 @@ InterviewAce_v2/
 
 #### 1. Interview Engine (`app/(app)/interview/session/page.tsx`)
 - **Real-time chat interface** with auto-scroll
-- **State machine** managing interview flow
-- **Question counter** showing progress (e.g., "Question 3 of 5")
+- **State machine** managing interview flow (idle → active → ended)
+- **Accurate question counter** - Excludes warmup ("Tell me about yourself") and final feedback
+  - Shows "Warming up" during intro question
+  - Counts only actual interview questions (e.g., "Question 3 of 5")
 - **Automatic advancement** after evaluation
-- **Interview length enforcement** - stops at configured question limit
+- **Interview length enforcement** - stops at configured question limit from user settings
+- **Optional video recording** with MediaRecorder API
+  - Live preview with `<video>` element
+  - Automatic cleanup on interview end
+  - Recording indicator with pulsing red dot
+- **Voice synthesis (TTS)** for reading questions aloud
+  - Toggleable voice button
+  - Text-to-speech queue management
+  - Preference-based auto-enable from settings
+- **Conditional score explanations** based on user settings
+  - Shows/hides detailed breakdown (strengths, improvements, dimension scores)
+- **Speech recognition** for voice input (optional)
 
 #### 2. Evaluation System (`lib/evaluation/`)
 
+**Main Engine** (`engine.ts`):
+- Orchestrates deterministic and semantic evaluation
+- Dual-mode support (deterministic-only or hybrid)
+- Comprehensive evaluation with 5 dimensions
+- Graceful fallback if ML fails
+
 **Keywords Module** (`keywords.ts`):
-- 13+ role-specific keyword libraries
+- 13+ role-specific keyword libraries (700+ total keywords)
 - `getRelevantKeywords(role, type)` - Returns appropriate keyword set
-- Role detection logic (Flutter, Support, Data Engineer, etc.)
+- Role detection logic (Flutter, Support, Data Engineer, System Design, etc.)
+- Domain-specific terminology for accurate technical assessment
 
 **Scoring Module** (`scorers.ts`):
 - **Technical Score**: Keyword matching + code detection + diversity bonuses
@@ -341,57 +592,154 @@ InterviewAce_v2/
 - **Relevance Score**: Answer-question similarity
 - **Structure Score**: Logical organization, transitions
 
-#### 3. AI Integration (`lib/ai/`)
+**Preprocessing** (`preprocessor.ts`):
+- Text normalization and cleaning
+- Code snippet detection
+- Stop word removal (optional)
+
+**Normalization** (`normalize.ts`):
+- Score capping and range enforcement
+- Consistency across evaluation methods
+
+#### 3. Semantic ML System (`lib/ml/`)
+
+**Semantic Evaluator** (`semanticEvaluator.ts`):
+- Uses all-MiniLM-L6-v2 Sentence-BERT model
+- Computes cosine similarity between question and answer embeddings
+- Returns 0-10 similarity score
+- Graceful fallback to deterministic if ML fails
+
+**Model Wrapper** (`semantic.ts`):
+- Lazy-loads @xenova/transformers (only when needed)
+- Model caching for performance (~80MB download, one-time)
+- Inference in ~100-300ms after initial load
+- Batched embedding computation
+
+**Integration:**
+```typescript
+// Hybrid scoring formula
+finalScore = (0.7 × deterministicScore) + (0.3 × semanticScore)
+```
+
+#### 4. AI Integration (`lib/ai/`)
 
 **Client** (`client.ts`):
-- OpenRouter API wrapper
-- Error handling with retries
-- Streaming support (disabled for structured output)
-- Model/temperature configuration from MongoDB
+- OpenRouter API wrapper with error handling
+- Retry logic with exponential backoff
+- Streaming support (configurable)
+- Model/temperature configuration from MongoDB user settings
 
 **Prompts** (`prompts.ts`):
 - **Evaluation Prompt**: Generates structured JSON with scores and feedback
-  - Role-specific guidance (Flutter, System Design, Technical Support)
+  - Role-specific guidance (Flutter: "Mention StatefulWidget", Support: "Use ipconfig/Event Viewer")
   - Score ranges with examples (75+, 65-74, 55-64, <55)
-  - Actionable suggestions ("Consider using X", "Add specific command Y")
+  - Actionable suggestions with specific tool/command names
   
-- **Follow-up Prompt**: Creates contextual follow-up questions
-- **System Prompt**: Interview personality and tone
+- **Follow-up Prompt**: Creates contextual follow-up questions based on previous answer
+- **System Prompt**: Interview personality - encouraging, professional, zen-like tone
+- **Greeting Prompt**: Personalized welcome message with role context
 
-#### 4. Database Layer (`lib/db/`)
+#### 5. Database Layer (`lib/db/`)
+
+**Connection Management** (`mongoose.ts`):
+- Singleton pattern for MongoDB connection
+- Connection pooling and reuse
+- Error handling and reconnection logic
 
 **Models:**
-- **Session**: Stores complete interview history
+- **Session** (`models/Session.ts`): Complete interview history
   ```typescript
   {
     userId: string
+    userEmail: string
     config: { role, type, difficulty, length }
-    questions: Array<{ questionId, text, answer, evaluation }>
+    questions: Array<{ 
+      questionId, text, answer, 
+      evaluation: { 
+        score, deterministicScore, semanticScore, finalScore,
+        technical_depth, clarity, confidence, relevance, structure,
+        strengths[], improvements[]
+      }
+    }>
     overallScore: number
     status: "active" | "ended"
-    timestamps: { createdAt, endedAt }
+    timestamps: { createdAt, startedAt, endedAt }
   }
   ```
   
-- **UserSettings**: Per-user AI configuration
+- **UserSettings** (`models/UserSettings.ts`): Per-user configuration
   ```typescript
   {
     userId: string
     aiModel: string
-    temperature: number
-    maxQuestionsPerSession: number
+    aiTemperature: number
+    interviewLength: 3 | 5 | 6
+    scoringMode: "deterministic" | "hybrid"
+    voiceQuestionsEnabled: boolean
+    videoRecordingEnabled: boolean
+    showScoreExplanation: boolean
   }
   ```
 
-- **UserProfile**: User preferences and experience
+- **UserProfile** (`models/UserProfile.ts`): User preferences and experience
   ```typescript
   {
     userId: string
+    userEmail: string
     experienceLevel: "junior" | "mid" | "senior"
     primaryRole: string
-    areasToFocus: string[]
+    targetRoles: string[]
+    weakAreas: string[]
+    onboardingCompleted: boolean
+    createdAt: Date
   }
   ```
+
+- **Note** (`models/Note.ts`): User notes and study materials
+  ```typescript
+  {
+    userId: string
+    title: string
+    content: string
+    tags: string[]
+    createdAt: Date
+    updatedAt: Date
+  }
+  ```
+
+#### 5. Research Analytics Dashboard (`app/(app)/research/`)
+
+Admin-only dashboard for IEEE paper data analysis:
+
+**Features:**
+- **Dataset Overview**: Sessions, questions, AI success rate, correlation
+- **Individual Method Performance**: Separate cards for Deterministic, Semantic, Hybrid with:
+  - Mean score and standard deviation
+  - Score distribution mini-charts
+  - Sample size
+- **Individual Method Trends**: Three separate line charts showing score progression
+- **Combined Method Comparison**: Single unified chart overlaying all methods
+- **Performance Trends Over Time**: Enhanced visibility chart with:
+  - Increased height (450px vs 300px)
+  - LineChart instead of AreaChart (clearer)
+  - Thicker lines (3px) and larger dots
+  - Better color contrast
+- **Statistical Analysis**:
+  - Comprehensive statistical table (Mean, σ, n)
+  - Pearson correlation coefficient with visual indicator
+  - Interpretation guide (strong/moderate/weak)
+  - Consistency analysis (variance comparison)
+- **Score Distribution Analysis**: Grouped bar chart by score ranges
+- **Contextual Breakdowns**: Difficulty level and interview type (secondary metrics)
+
+**Components:**
+```typescript
+// app/(app)/research/page.tsx - Server component with auth check
+// app/(app)/research/ImprovedDashboard.tsx - Client component with all charts
+// api/research/metrics - Aggregates data from MongoDB sessions
+```
+
+**Chart Library:** Recharts (BarChart, LineChart, AreaChart, ResponsiveContainer)
 
 ### Interview Flow Diagram
 

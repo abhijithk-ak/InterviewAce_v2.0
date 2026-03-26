@@ -21,6 +21,11 @@ export async function GET() {
 
     await connectDB()
 
+    const toHundred = (v: number | null | undefined): number => {
+      if (!v || !Number.isFinite(v)) return 0
+      return Math.min(100, v > 10 ? v : v * 10)
+    }
+
     // Fetch all sessions for this user
     const sessions = await SessionModel.find({
       userEmail: session.user.email,
@@ -34,10 +39,10 @@ export async function GET() {
         averageScore: 0,
         avgDuration: 0,
         skillBreakdown: {
-          technical: 0,
-          communication: 0,
-          confidence: 0,
+          concept: 0,
+          semantic: 0,
           clarity: 0,
+          overall: 0,
         },
         scoreTrend: [],
       })
@@ -75,33 +80,33 @@ export async function GET() {
     )
 
     const skillBreakdown = {
-      technical: 0,
-      communication: 0,
-      confidence: 0,
+      concept: 0,
+      semantic: 0,
       clarity: 0,
+      overall: 0,
     }
 
     if (allEvaluations.length > 0) {
-      // Calculate averages with normalization (handles legacy 0-100 scores)
-      const technicalScores = allEvaluations.map((e: any) => 
-        migrateSubscore(e.technical_depth || e.technical || 0)
+      // Calculate averages with normalization across current and legacy shapes.
+      const conceptScores = allEvaluations.map((e: any) => 
+        migrateSubscore(e.breakdown?.conceptScore ?? e.conceptScore ?? e.technical_depth ?? e.technical ?? 0)
       )
-      const confidenceScores = allEvaluations.map((e: any) => 
-        migrateSubscore(e.confidence || 0)
+      const semanticScores = allEvaluations.map((e: any) => 
+        migrateSubscore(e.breakdown?.semanticScore ?? e.semanticScore ?? e.confidence ?? 0)
       )
       const clarityScores = allEvaluations.map((e: any) => 
-        migrateSubscore(e.clarity || 0)
+        migrateSubscore(e.breakdown?.clarityScore ?? e.clarityScore ?? e.clarity ?? 0)
       )
       const overallScores = allEvaluations.map((e: any) => 
-        migrateSubscore(e.score || 0)
+        migrateSubscore(e.overallScore ?? e.finalScore ?? e.score ?? 0)
       )
 
       // Subscores are 0-10 from migrateSubscore; multiply by 10 for 0-100 percentage display
       const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length
-      skillBreakdown.technical     = Math.round(avg(technicalScores)     * 10)
-      skillBreakdown.confidence    = Math.round(avg(confidenceScores)    * 10)
-      skillBreakdown.clarity       = Math.round(avg(clarityScores)       * 10)
-      skillBreakdown.communication = Math.round(avg(overallScores)       * 10)
+      skillBreakdown.concept  = Math.round(avg(conceptScores)  * 10)
+      skillBreakdown.semantic = Math.round(avg(semanticScores) * 10)
+      skillBreakdown.clarity  = Math.round(avg(clarityScores)  * 10)
+      skillBreakdown.overall  = Math.round(avg(overallScores)  * 10)
     }
 
     // Score trend (last 10 sessions)
@@ -121,22 +126,22 @@ export async function GET() {
     // Collect per-question metrics from all sessions
     const allMetrics = sessions.flatMap((s) =>
       (s.questions as any[])
-        .filter((q) => q.metrics?.deterministicScore != null)
+        .filter((q) => q.metrics?.deterministicScore != null || q.metrics?.conceptScore != null || q.metrics?.overallScore != null)
         .map((q) => ({
-          deterministicScore: q.metrics.deterministicScore as number,
-          semanticScore: (q.metrics.semanticScore as number) * 10, // normalise 0-10 → 0-100
-          finalScore: q.metrics.finalScore as number,
+          deterministicScore: q.metrics.deterministicScore ?? ((q.metrics.conceptScore ?? 0) * 10),
+          semanticScore: toHundred(q.metrics.semanticScore as number),
+          finalScore: q.metrics.finalScore ?? q.metrics.overallScore ?? 0,
         }))
     )
 
     // Also pull from evaluation fields for sessions saved before metrics existed
     const allEvaluationScores = sessions.flatMap((s) =>
       (s.questions as any[])
-        .filter((q) => q.evaluation?.deterministicScore != null && q.metrics == null)
+        .filter((q) => (q.evaluation?.deterministicScore != null || q.evaluation?.breakdown != null || q.evaluation?.conceptScore != null || q.evaluation?.overallScore != null) && q.metrics == null)
         .map((q) => ({
-          deterministicScore: q.evaluation.deterministicScore as number,
-          semanticScore: (q.evaluation.semanticScore as number) * 10,
-          finalScore: q.evaluation.finalScore as number,
+          deterministicScore: q.evaluation.deterministicScore ?? toHundred(q.evaluation.breakdown?.conceptScore ?? q.evaluation.conceptScore),
+          semanticScore: toHundred(q.evaluation.breakdown?.semanticScore ?? q.evaluation.semanticScore),
+          finalScore: q.evaluation.finalScore ?? q.evaluation.overallScore ?? q.evaluation.score ?? 0,
         }))
     )
 
@@ -188,12 +193,12 @@ export async function GET() {
       .reverse()
       .map((s) => {
         const questions = (s.questions as any[]).filter(
-          (q) => q.metrics?.deterministicScore != null
+          (q) => q.metrics?.deterministicScore != null || q.metrics?.conceptScore != null || q.metrics?.overallScore != null
         )
         if (questions.length === 0) return null
-        const avgD = questions.reduce((a: number, q: any) => a + q.metrics.deterministicScore, 0) / questions.length
-        const avgS = questions.reduce((a: number, q: any) => a + q.metrics.semanticScore * 10, 0) / questions.length
-        const avgF = questions.reduce((a: number, q: any) => a + q.metrics.finalScore, 0) / questions.length
+        const avgD = questions.reduce((a: number, q: any) => a + (q.metrics.deterministicScore ?? ((q.metrics.conceptScore ?? 0) * 10)), 0) / questions.length
+        const avgS = questions.reduce((a: number, q: any) => a + toHundred(q.metrics.semanticScore), 0) / questions.length
+        const avgF = questions.reduce((a: number, q: any) => a + (q.metrics.finalScore ?? q.metrics.overallScore ?? 0), 0) / questions.length
         return {
           date: new Date(s.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           deterministicScore: Math.round(avgD * 10) / 10,

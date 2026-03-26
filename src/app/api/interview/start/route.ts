@@ -9,6 +9,16 @@ import { startInterview, validateConfig } from "@/lib/interview/start"
 import { UserSettingsModel } from "@/lib/db/models/UserSettings"
 import { connectDB } from "@/lib/db/mongoose"
 
+const DEFAULT_USER_SETTINGS = {
+  interviewLength: 5 as 3 | 5 | 6,
+  aiModel: "meta-llama/llama-3.2-3b-instruct:free",
+  aiTemperature: 0.7,
+  voiceQuestionsEnabled: true,
+  videoRecordingEnabled: true,
+  showScoreExplanation: true,
+  theme: "dark" as "dark" | "light",
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Check authentication
@@ -32,9 +42,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Load user settings from MongoDB
-    await connectDB()
-    const userSettings = await UserSettingsModel.getOrCreate(session.user.email)
+    // Load user settings from MongoDB (fallback to defaults if DB unavailable)
+    let userSettings = DEFAULT_USER_SETTINGS
+    try {
+      await connectDB()
+      const dbSettings = await UserSettingsModel.getOrCreate(session.user.email)
+      userSettings = {
+        interviewLength: dbSettings.interviewLength,
+        aiModel: dbSettings.aiModel,
+        aiTemperature: dbSettings.aiTemperature,
+        voiceQuestionsEnabled: dbSettings.voiceQuestionsEnabled,
+        videoRecordingEnabled: dbSettings.videoRecordingEnabled,
+        showScoreExplanation: dbSettings.showScoreExplanation,
+        theme: dbSettings.theme,
+      }
+    } catch (dbError) {
+      console.warn("Interview start: settings DB unavailable, using defaults", dbError)
+    }
     
     // Start interview with AI-first approach using user settings
     const userName = session.user.name || session.user.email?.split('@')[0] || undefined
@@ -54,8 +78,12 @@ export async function POST(req: NextRequest) {
       config,
       userSettings: {
         interviewLength: userSettings.interviewLength,
-        scoringMode: userSettings.scoringMode,
-        aiModel: userSettings.aiModel
+        aiModel: userSettings.aiModel,
+        aiTemperature: userSettings.aiTemperature,
+        voiceQuestionsEnabled: userSettings.voiceQuestionsEnabled,
+        videoRecordingEnabled: userSettings.videoRecordingEnabled,
+        showScoreExplanation: userSettings.showScoreExplanation,
+        theme: userSettings.theme,
       },
       ...(process.env.NODE_ENV === 'development' && result.debug && {
         debug: result.debug

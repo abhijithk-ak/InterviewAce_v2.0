@@ -209,7 +209,7 @@ export default function ResearchDashboard() {
             <section className="bg-neutral-800 rounded-xl p-6 border border-neutral-700">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <BarChart2 className="w-6 h-6 text-purple-400" />
-                Evaluation Method Comparison
+                Component Average Comparison
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={metrics.methodComparison}>
@@ -222,9 +222,9 @@ export default function ResearchDashboard() {
                       <Cell
                         key={`cell-${index}`}
                         fill={
-                          entry.method === "Deterministic"
+                          entry.method === "Concept Score"
                             ? COLORS.deterministic
-                            : entry.method === "Semantic"
+                            : entry.method === "Semantic Similarity"
                             ? COLORS.semantic
                             : COLORS.hybrid
                         }
@@ -246,17 +246,16 @@ export default function ResearchDashboard() {
                 <h3 className="font-semibold text-blue-300 mb-2">Key Findings:</h3>
                 <ul className="text-sm text-blue-100 space-y-1">
                   <li>
-                    • Hybrid evaluation shows{" "}
+                    • Final hybrid scoring shows{" "}
                     {(metrics.hybridAverage - metrics.deterministicAverage).toFixed(1)} point
-                    improvement over deterministic
+                    delta over concept score
                   </li>
                   <li>
                     • Standard deviation decreased from {metrics.deterministicStdDev.toFixed(1)} to{" "}
                     {metrics.hybridStdDev.toFixed(1)} (more consistent scoring)
                   </li>
                   <li>
-                    • Correlation: {metrics.correlation?.toFixed(3)} between deterministic and
-                    semantic
+                    • Correlation: {metrics.correlation?.toFixed(3)} between concept and semantic
                   </li>
                   <li>• Sample size: {metrics.totalQuestions} question-answer pairs</li>
                 </ul>
@@ -267,7 +266,7 @@ export default function ResearchDashboard() {
             <section className="bg-neutral-800 rounded-xl p-6 border border-neutral-700">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <TrendingUp className="w-6 h-6 text-green-400" />
-                Score Distribution by Method
+                Score Distribution by Component
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={metrics.scoreDistribution}>
@@ -276,9 +275,9 @@ export default function ResearchDashboard() {
                   <YAxis stroke="#9ca3af" />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
-                  <Bar dataKey="deterministic" fill={COLORS.deterministic} name="Deterministic" />
-                  <Bar dataKey="semantic" fill={COLORS.semantic} name="Semantic" />
-                  <Bar dataKey="hybrid" fill={COLORS.hybrid} name="Hybrid" />
+                  <Bar dataKey="deterministic" fill={COLORS.deterministic} name="Concept Score" />
+                  <Bar dataKey="semantic" fill={COLORS.semantic} name="Semantic Similarity" />
+                  <Bar dataKey="hybrid" fill={COLORS.hybrid} name="Final Hybrid Score" />
                 </BarChart>
               </ResponsiveContainer>
             </section>
@@ -306,21 +305,21 @@ export default function ResearchDashboard() {
                       dataKey="deterministic"
                       stroke={COLORS.deterministic}
                       strokeWidth={2}
-                      name="Deterministic"
+                      name="Concept Score"
                     />
                     <Line
                       type="monotone"
                       dataKey="semantic"
                       stroke={COLORS.semantic}
                       strokeWidth={2}
-                      name="Semantic"
+                      name="Semantic Similarity"
                     />
                     <Line
                       type="monotone"
                       dataKey="hybrid"
                       stroke={COLORS.hybrid}
                       strokeWidth={2}
-                      name="Hybrid"
+                      name="Final Hybrid Score"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -332,7 +331,7 @@ export default function ResearchDashboard() {
               <section className="bg-neutral-800 rounded-xl p-6 border border-neutral-700">
                 <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                   <Activity className="w-6 h-6 text-indigo-400" />
-                  Correlation Analysis: Deterministic vs Semantic Scores
+                  Correlation Analysis: Concept vs Semantic Scores
                 </h2>
                 <ResponsiveContainer width="100%" height={350}>
                   <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
@@ -340,18 +339,18 @@ export default function ResearchDashboard() {
                     <XAxis
                       type="number"
                       dataKey="deterministic"
-                      name="Deterministic"
+                      name="Concept Score"
                       stroke="#9ca3af"
                       domain={[0, 100]}
-                      label={{ value: 'Deterministic Score', position: 'insideBottom', offset: -10, fill: '#9ca3af' }}
+                      label={{ value: 'Concept Score', position: 'insideBottom', offset: -10, fill: '#9ca3af' }}
                     />
                     <YAxis
                       type="number"
                       dataKey="semantic"
-                      name="Semantic"
+                      name="Semantic Similarity"
                       stroke="#9ca3af"
                       domain={[0, 100]}
-                      label={{ value: 'Semantic Score', angle: -90, position: 'insideLeft', fill: '#9ca3af' }}
+                      label={{ value: 'Semantic Similarity', angle: -90, position: 'insideLeft', fill: '#9ca3af' }}
                     />
                     <ZAxis range={[60, 60]} />
                     <Tooltip
@@ -362,10 +361,10 @@ export default function ResearchDashboard() {
                           <div className="bg-neutral-800  border border-neutral-600 rounded-lg px-3 py-2 shadow-xl">
                             <p className="text-xs text-neutral-400 mb-1">Score Pair</p>
                             <p className="text-sm font-bold text-indigo-400">
-                              Det: {payload[0]?.value}
+                              Concept: {payload[0]?.value}
                             </p>
                             <p className="text-sm font-bold text-purple-400">
-                              Sem: {payload[1]?.value}
+                              Semantic: {payload[1]?.value}
                             </p>
                           </div>
                         )
@@ -397,7 +396,7 @@ export default function ResearchDashboard() {
                   </p>
                   <p className="text-xs text-indigo-200 mt-2">
                     Each point represents a question-answer pair. Clustering near the diagonal
-                    indicates agreement between methods.
+                    indicates agreement between scoring components.
                   </p>
                 </div>
               </section>
@@ -413,9 +412,9 @@ export default function ResearchDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {metrics.boxPlotData.map((data, idx) => {
                     const color =
-                      data.method === "Deterministic"
+                      data.method === "Concept Score"
                         ? COLORS.deterministic
-                        : data.method === "Semantic"
+                        : data.method === "Semantic Similarity"
                         ? COLORS.semantic
                         : COLORS.hybrid
                     return (

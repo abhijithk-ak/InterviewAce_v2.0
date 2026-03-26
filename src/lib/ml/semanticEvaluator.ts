@@ -1,8 +1,11 @@
 ﻿/**
- * Semantic Evaluation Module
+ * Semantic Evaluation Module (Enhanced with Reference Answer Similarity)
  * 
- * Uses Sentence-BERT embeddings to measure semantic similarity between
- * interview questions and answers using the all-MiniLM-L6-v2 model.
+ * Uses Sentence-BERT embeddings to measure semantic similarity.
+ * 
+ * TWO MODES:
+ * 1. Question-Answer similarity (legacy) - measures topic relevance
+ * 2. Reference-Answer similarity (NEW) - measures conceptual correctness
  * 
  * Features:
  * - Lightweight transformer model (~80MB)
@@ -156,6 +159,66 @@ export async function semanticScore(
 }
 
 /**
+ * Calculate semantic correctness by comparing answer to reference answer
+ * 
+ * THIS IS THE KEY IMPROVEMENT for detecting correctness vs just topic similarity.
+ * 
+ * Instead of comparing question ↔ answer (which measures topic relevance),
+ * we compare referenceAnswer ↔ userAnswer (which measures conceptual correctness).
+ * 
+ * Example:
+ * Question: "Explain overfitting"
+ * Reference: "Overfitting occurs when a model learns noise in training data..."
+ * Wrong Answer: "Overfitting is when the model doesn't memorize enough"
+ * 
+ * Question-Answer similarity would be HIGH (same topic)
+ * Reference-Answer similarity would be LOW (opposite meaning)
+ * 
+ * @param referenceAnswer Correct/expected answer from question bank
+ * @param candidateAnswer User's actual answer
+ * @returns Promise<number> Semantic correctness score (0-10)
+ */
+export async function semanticCorrectnessScore(
+  referenceAnswer: string,
+  candidateAnswer: string
+): Promise<number> {
+  try {
+    // Handle empty inputs
+    if (!referenceAnswer.trim() || !candidateAnswer.trim()) {
+      return 0
+    }
+    
+    // Load model (uses cache if already loaded)
+    const model = await loadModel()
+    
+    // Generate embeddings for reference and candidate answers
+    const [refEmbedding, candEmbedding] = await Promise.all([
+      model(referenceAnswer, { pooling: 'mean', normalize: true }),
+      model(candidateAnswer, { pooling: 'mean', normalize: true })
+    ])
+    
+    // Extract embedding arrays from tensor output
+    const refVector = Array.from(refEmbedding.data) as number[]
+    const candVector = Array.from(candEmbedding.data) as number[]
+    
+    // Compute cosine similarity
+    const similarity = cosineSimilarity(refVector, candVector)
+    
+    // Convert to 0-10 scale
+    const clampedSimilarity = Math.max(0, Math.min(1, similarity))
+    const score = clampedSimilarity * 10
+    
+    // Round to 1 decimal place
+    return Math.round(score * 10) / 10
+  } catch (error) {
+    console.error('Error computing semantic correctness score:', error)
+    
+    // Return 0 on error to avoid breaking evaluation
+    return 0
+  }
+}
+
+/**
  * Calculate mean pooling from transformer output
  * Helper function for extracting meaningful embeddings
  * 
@@ -200,9 +263,8 @@ export async function preloadModel(): Promise<void> {
 
 // Export types for TypeScript
 export interface SemanticEvaluation {
-  score: number          // 0-10 semantic similarity score
-  similarity: number     // Raw cosine similarity (0-1)
-  confidence: 'high' | 'medium' | 'low'  // Interpretation of score
+  semanticScore: number
+  similarity: number
 }
 
 /**
@@ -213,25 +275,39 @@ export interface SemanticEvaluation {
  * @returns Promise<SemanticEvaluation> Detailed semantic evaluation
  */
 export async function evaluateSemanticSimilarity(
-  question: string,
-  answer: string
+  referenceAnswer: string,
+  candidateAnswer: string
 ): Promise<SemanticEvaluation> {
-  const score = await semanticScore(question, answer)
-  const similarity = score / 10
-  
-  // Determine confidence level
-  let confidence: 'high' | 'medium' | 'low'
-  if (score >= 7) {
-    confidence = 'high'
-  } else if (score >= 4) {
-    confidence = 'medium'
-  } else {
-    confidence = 'low'
-  }
-  
-  return {
-    score,
-    similarity,
-    confidence
+  try {
+    if (!referenceAnswer.trim() || !candidateAnswer.trim()) {
+      return {
+        similarity: 0,
+        semanticScore: 0,
+      }
+    }
+
+    const model = await loadModel()
+    const [refEmbedding, candEmbedding] = await Promise.all([
+      model(referenceAnswer, { pooling: 'mean', normalize: true }),
+      model(candidateAnswer, { pooling: 'mean', normalize: true })
+    ])
+
+    const refVector = Array.from(refEmbedding.data) as number[]
+    const candVector = Array.from(candEmbedding.data) as number[]
+
+    const rawSimilarity = cosineSimilarity(refVector, candVector)
+    const similarity = Math.max(0, Math.min(1, rawSimilarity))
+    const semanticScore = Math.max(0, Math.min(10, similarity * 10))
+
+    return {
+      similarity: Math.round(similarity * 1000) / 1000,
+      semanticScore: Math.round(semanticScore * 10) / 10,
+    }
+  } catch (error) {
+    console.error('Error computing semantic similarity:', error)
+    return {
+      similarity: 0,
+      semanticScore: 0,
+    }
   }
 }

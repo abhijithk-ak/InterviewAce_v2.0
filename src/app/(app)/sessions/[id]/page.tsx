@@ -53,6 +53,11 @@ type SessionData = {
     }
   }>
   overallScore: number
+  coachSummary?: {
+    strengths?: string[]
+    improvements?: string[]
+    recommendations?: string[]
+  }
 }
 
 export default function SessionDetailPage() {
@@ -197,6 +202,62 @@ export default function SessionDetailPage() {
 
       {/* Questions and Answers */}
       <div className="space-y-6">
+        {sessionData.coachSummary && (
+          <Card>
+            <CardHeader>
+              <h2 className="text-xl font-semibold text-neutral-900">AI Coach Summary</h2>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Overall Strengths
+                  </h4>
+                  <ul className="space-y-2">
+                    {(sessionData.coachSummary.strengths ?? []).map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-neutral-700">
+                        <span className="text-green-600 mt-0.5">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-orange-700 mb-2 flex items-center gap-2">
+                    <Award className="w-4 h-4" />
+                    Key Areas to Improve
+                  </h4>
+                  <ul className="space-y-2">
+                    {(sessionData.coachSummary.improvements ?? []).map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-neutral-700">
+                        <span className="text-orange-600 mt-0.5">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Practical Recommendations
+                  </h4>
+                  <ul className="space-y-2">
+                    {(sessionData.coachSummary.recommendations ?? []).map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-neutral-700">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <h2 className="text-xl font-semibold text-neutral-900">Questions & Evaluations</h2>
         
         {sessionData.questions.map((question, idx) => (

@@ -5,10 +5,11 @@
 
 import { LEARNING_RESOURCES } from "@/lib/resources"
 import type { IUserProfile } from "@/lib/db/models/UserProfile"
+import { getDomainResourceMapping } from "@/lib/recommendation/domain-mapper"
 
 export type SkillDeficits = {
-  technical: number
-  communication: number
+  knowledgeAccuracy: number
+  overall: number
   confidence: number
   clarity: number
 }
@@ -17,8 +18,8 @@ export type RecommendationContext = {
   profile: IUserProfile
   analytics?: {
     skillBreakdown: {
-      technical: number
-      communication: number
+      knowledgeAccuracy: number
+      overall: number
       confidence: number
       clarity: number
     }
@@ -41,8 +42,8 @@ export function calculateSkillDeficits(context: RecommendationContext): SkillDef
     const baseDeficit = Math.max(0, 6 - profile.confidenceLevel) // Scale 1-5 confidence to deficit
     
     return {
-      technical: baseDeficit + 2, // Assume technical needs work for new users
-      communication: baseDeficit + (profile.interviewGoals.includes('improve-communication') ? 3 : 1),
+      knowledgeAccuracy: baseDeficit + 2,
+      overall: baseDeficit + 1,
       confidence: Math.max(0, 8 - profile.confidenceLevel * 1.6), // Scale to 0-8
       clarity: baseDeficit + (profile.interviewGoals.includes('improve-communication') ? 2 : 1)
     }
@@ -52,8 +53,8 @@ export function calculateSkillDeficits(context: RecommendationContext): SkillDef
   const { skillBreakdown, averageScore } = analytics
   
   return {
-    technical: Math.max(0, 10 - skillBreakdown.technical),
-    communication: Math.max(0, 10 - skillBreakdown.communication),
+    knowledgeAccuracy: Math.max(0, 10 - skillBreakdown.knowledgeAccuracy),
+    overall: Math.max(0, 10 - skillBreakdown.overall),
     confidence: Math.max(0, 10 - skillBreakdown.confidence),
     clarity: Math.max(0, 10 - skillBreakdown.clarity)
   }
@@ -89,6 +90,10 @@ export function scoreResources(context: RecommendationContext) {
   const deficits = calculateSkillDeficits(context)
   const targetDifficulty = calculateDynamicDifficulty(context)
   const { profile, analytics } = context
+  const mappedResourceIds = getDomainResourceMapping(profile.domains as any)
+  const normalizedDomains = profile.domains.map((domain: string) => normalizeToken(domain))
+  const deficitEntries = Object.entries(deficits) as Array<[keyof SkillDeficits, number]>
+  const maxDeficit = Math.max(1, ...deficitEntries.map(([, value]) => value))
 
   // Find primary focus (skill with highest deficit)
   const primaryDeficit = Object.entries(deficits)
@@ -105,16 +110,33 @@ export function scoreResources(context: RecommendationContext) {
   return LEARNING_RESOURCES.map(category => {
     let score = 0
 
-    // 1. PRIMARY DEFICIT MATCHING (40% weight)
+    // 1. DEFICIT-WEIGHTED SKILL MATCHING (40% weight)
+    const weightedSkillAlignment = deficitEntries.reduce((sum, [skill, deficit]) => {
+      if (!categoryTargetsSkill(category, skill)) return sum
+      return sum + ((deficit / maxDeficit) * 30)
+    }, 0)
+    score += Math.min(30, weightedSkillAlignment)
+
+    // 1b. PRIMARY SKILL BONUS (10% weight)
     const categoryTargetsPrimary = categoryTargetsSkill(category, primaryDeficit[0])
-    if (categoryTargetsPrimary) score += 40
+    if (categoryTargetsPrimary) {
+      score += (Number(primaryDeficit[1]) / maxDeficit) * 10
+    }
 
     // 2. DOMAIN ALIGNMENT (25% weight)  
-    const domainMatch = profile.domains.some(domain => 
-      category.id.includes(domain.replace('-', '')) ||
-      category.name.toLowerCase().includes(domain) ||
-      (category as any).tags?.includes(domain)
+    const domainTagMatch = category.resources.some((resource) =>
+      normalizedDomains.some((domain) =>
+        resource.tags.some((tag) => {
+          const normalizedTag = normalizeToken(tag)
+          return (
+            normalizedTag === domain ||
+            normalizedTag.includes(domain) ||
+            domain.includes(normalizedTag)
+          )
+        })
+      )
     )
+    const domainMatch = mappedResourceIds.includes(category.id) || domainTagMatch
     if (domainMatch) score += 25
 
     // 3. DIFFICULTY APPROPRIATENESS (20% weight)
@@ -131,8 +153,8 @@ export function scoreResources(context: RecommendationContext) {
 
     // 4. WEAK AREAS FROM ONBOARDING (15% weight)
     const weakAreaMatch = (profile.weakAreas || []).some(weak => 
-      category.id.includes(weak.replace('-', '')) ||
-      category.name.toLowerCase().includes(weak.replace('-', ' '))
+      normalizeToken(category.id).includes(normalizeToken(weak)) ||
+      normalizeToken(category.name).includes(normalizeToken(weak))
     )
     if (weakAreaMatch) score += 15
 
@@ -160,10 +182,10 @@ export function scoreResources(context: RecommendationContext) {
  */
 function categoryTargetsSkill(category: any, skill: string): boolean {
   const skillMap = {
-    technical: ['algorithm', 'coding', 'system-design', 'data-structures'],
-    communication: ['behavioral', 'soft-skills', 'presentation'],
-    confidence: ['fundamentals', 'practice', 'mock-interview'],
-    clarity: ['communication', 'behavioral', 'presentation']
+    knowledgeAccuracy: ['algorithm', 'coding', 'system-design', 'data-structures'],
+    overall: ['system-architecture', 'database-design', 'distributed-systems', 'architecture'],
+    confidence: ['fundamentals', 'practice', 'confidence'],
+    clarity: ['communication', 'clarity', 'presentation', 'technical-writing']
   }
   
   const keywords = skillMap[skill as keyof typeof skillMap] || []
@@ -210,4 +232,8 @@ export function getPersonalizedRecommendations(context: RecommendationContext) {
       .sort(([,a], [,b]) => b - a)[0], // [skill, deficit]
     isNewUser: context.totalSessions === 0
   }
+}
+
+function normalizeToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }

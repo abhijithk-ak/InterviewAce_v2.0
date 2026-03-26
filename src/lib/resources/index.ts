@@ -138,13 +138,13 @@ export const LEARNING_RESOURCES: ResourceCategory[] = [
       },
       {
         id: "comm-2",
-        title: "Mock Interview Practice",
-        description: "Practice explaining code and thought process",
-        url: "https://www.pramp.com/",
-        type: "practice",
-        difficulty: "intermediate",
-        duration: "45 min",
-        tags: ["mock-interviews", "practice", "feedback"]
+        title: "Think Fast, Talk Smart",
+        description: "Frameworks for concise and clear communication under pressure.",
+        url: "https://www.gsb.stanford.edu/insights/think-fast-talk-smart-podcast",
+        type: "article",
+        difficulty: "beginner",
+        duration: "30 min",
+        tags: ["communication", "clarity", "structured-thinking"]
       }
     ]
   },
@@ -172,6 +172,276 @@ export const LEARNING_RESOURCES: ResourceCategory[] = [
         difficulty: "beginner", 
         duration: "21 min",
         tags: ["body-language", "presence", "confidence"]
+      }
+    ]
+  },
+  {
+    id: "role-frontend",
+    name: "Frontend Track",
+    description: "Role-focused preparation for frontend engineering interviews",
+    resources: [
+      {
+        id: "role-frontend-1",
+        title: "Frontend Interview Handbook",
+        description: "Deep guide for React, JS, rendering, and browser internals.",
+        url: "https://www.frontendinterviewhandbook.com/",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "3 hours",
+        tags: ["frontend", "javascript", "react", "browser"]
+      },
+      {
+        id: "role-frontend-2",
+        title: "Web.dev Performance Learn",
+        description: "Practical performance techniques commonly asked in frontend interviews.",
+        url: "https://web.dev/learn/performance/",
+        type: "course",
+        difficulty: "intermediate",
+        duration: "2 hours",
+        tags: ["frontend", "performance", "web", "javascript"]
+      }
+    ]
+  },
+  {
+    id: "role-backend",
+    name: "Backend Track",
+    description: "Role-focused preparation for backend engineering interviews",
+    resources: [
+      {
+        id: "role-backend-1",
+        title: "Backend System Design (ByteByteGo)",
+        description: "Backend-focused architecture patterns and trade-offs.",
+        url: "https://blog.bytebytego.com/",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "2 hours",
+        tags: ["backend", "apis", "architecture", "scalability"]
+      },
+      {
+        id: "role-backend-2",
+        title: "REST API Design Best Practices",
+        description: "Core API design patterns, versioning, and reliability principles.",
+        url: "https://learn.microsoft.com/en-us/azure/architecture/best-practices/api-design",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "1 hour",
+        tags: ["backend", "api", "rest", "design"]
+      }
+    ]
+  },
+  {
+    id: "role-fullstack",
+    name: "Fullstack Track",
+    description: "Role-focused preparation for fullstack engineering interviews",
+    resources: [
+      {
+        id: "role-fullstack-1",
+        title: "Fullstack Open",
+        description: "Comprehensive fullstack path: React, Node, testing, DevOps.",
+        url: "https://fullstackopen.com/en/",
+        type: "course",
+        difficulty: "intermediate",
+        duration: "10 hours",
+        tags: ["fullstack", "frontend", "backend", "apis"]
+      },
+      {
+        id: "role-fullstack-2",
+        title: "The Odin Project - Full Stack JavaScript",
+        description: "Hands-on project path covering client-server integration.",
+        url: "https://www.theodinproject.com/paths/full-stack-javascript",
+        type: "course",
+        difficulty: "beginner",
+        duration: "8 hours",
+        tags: ["fullstack", "javascript", "node", "react"]
+      }
+    ]
+  },
+  {
+    id: "role-data-science",
+    name: "Data Science Track",
+    description: "Role-focused preparation for data science interviews",
+    resources: [
+      {
+        id: "role-datascience-1",
+        title: "Data Science Interview Study Guide",
+        description: "Statistics, ML intuition, and practical interview prep.",
+        url: "https://www.kdnuggets.com/",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "2 hours",
+        tags: ["data-science", "statistics", "ml", "python"]
+      },
+      {
+        id: "role-datascience-2",
+        title: "StatQuest",
+        description: "Clear explanations of core statistics and ML concepts.",
+        url: "https://www.youtube.com/c/joshstarmer",
+        type: "video",
+        difficulty: "beginner",
+        duration: "3 hours",
+        tags: ["data-science", "statistics", "machine-learning", "fundamentals"]
+      }
+    ]
+  },
+  {
+    id: "role-cloud",
+    name: "Cloud Track",
+    description: "Role-focused preparation for cloud engineering interviews",
+    resources: [
+      {
+        id: "role-cloud-1",
+        title: "AWS Architecture Center",
+        description: "Cloud reference architectures and best practices.",
+        url: "https://aws.amazon.com/architecture/",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "2 hours",
+        tags: ["cloud", "aws", "architecture", "distributed-systems"]
+      },
+      {
+        id: "role-cloud-2",
+        title: "Google Cloud Architecture Framework",
+        description: "Design guidance for reliability, security, and operational excellence.",
+        url: "https://cloud.google.com/architecture/framework",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "90 min",
+        tags: ["cloud", "gcp", "architecture", "reliability"]
+      }
+    ]
+  },
+  {
+    id: "role-devops",
+    name: "DevOps Track",
+    description: "Role-focused preparation for DevOps interviews",
+    resources: [
+      {
+        id: "role-devops-1",
+        title: "DevOps Roadmap",
+        description: "End-to-end roadmap for CI/CD, IaC, containers, and observability.",
+        url: "https://roadmap.sh/devops",
+        type: "course",
+        difficulty: "beginner",
+        duration: "4 hours",
+        tags: ["devops", "cloud", "kubernetes", "ci-cd"]
+      },
+      {
+        id: "role-devops-2",
+        title: "Kubernetes Basics",
+        description: "Foundational Kubernetes concepts for deployment and operations.",
+        url: "https://kubernetes.io/docs/tutorials/kubernetes-basics/",
+        type: "course",
+        difficulty: "intermediate",
+        duration: "2 hours",
+        tags: ["devops", "kubernetes", "containers", "operations"]
+      }
+    ]
+  },
+  {
+    id: "role-mobile",
+    name: "Mobile Track",
+    description: "Role-focused preparation for mobile engineering interviews",
+    resources: [
+      {
+        id: "role-mobile-1",
+        title: "Mobile System Design Basics",
+        description: "Offline-first, sync, performance, and app architecture patterns.",
+        url: "https://developer.android.com/topic/architecture",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "90 min",
+        tags: ["mobile", "flutter", "android", "ios"]
+      },
+      {
+        id: "role-mobile-2",
+        title: "iOS App Dev Tutorials",
+        description: "Core iOS architecture and app lifecycle fundamentals.",
+        url: "https://developer.apple.com/tutorials/app-dev-training",
+        type: "course",
+        difficulty: "beginner",
+        duration: "3 hours",
+        tags: ["mobile", "ios", "swift", "app-architecture"]
+      }
+    ]
+  },
+  {
+    id: "role-machine-learning",
+    name: "Machine Learning Track",
+    description: "Role-focused preparation for ML engineering interviews",
+    resources: [
+      {
+        id: "role-ml-1",
+        title: "Made With ML - Production ML",
+        description: "Hands-on path for model development and ML system reliability.",
+        url: "https://madewithml.com/",
+        type: "course",
+        difficulty: "advanced",
+        duration: "6 hours",
+        tags: ["machine-learning", "ml-engineer", "data-science", "mlops"]
+      },
+      {
+        id: "role-ml-2",
+        title: "Chip Huyen - MLOps Notes",
+        description: "Practical MLOps and ML system design notes.",
+        url: "https://huyenchip.com/machine-learning-systems-design/toc.html",
+        type: "article",
+        difficulty: "advanced",
+        duration: "2 hours",
+        tags: ["machine-learning", "mlops", "system-design", "production"]
+      }
+    ]
+  },
+  {
+    id: "role-system-design",
+    name: "System Design Track",
+    description: "Role-focused preparation for system design interviews",
+    resources: [
+      {
+        id: "role-systemdesign-1",
+        title: "System Design Interview Playlist",
+        description: "End-to-end architecture discussions for common design prompts.",
+        url: "https://www.youtube.com/c/SystemDesignInterview",
+        type: "video",
+        difficulty: "intermediate",
+        duration: "3 hours",
+        tags: ["system-design", "backend", "architecture", "scalability"]
+      },
+      {
+        id: "role-systemdesign-2",
+        title: "ByteByteGo Newsletter",
+        description: "Concise system design lessons with architecture trade-offs.",
+        url: "https://blog.bytebytego.com/",
+        type: "article",
+        difficulty: "intermediate",
+        duration: "90 min",
+        tags: ["system-design", "architecture", "distributed-systems", "backend"]
+      }
+    ]
+  },
+  {
+    id: "role-cybersecurity",
+    name: "Cybersecurity Track",
+    description: "Role-focused preparation for cybersecurity interviews",
+    resources: [
+      {
+        id: "role-cybersecurity-1",
+        title: "OWASP Top 10",
+        description: "Most critical web security risks every engineer should know.",
+        url: "https://owasp.org/www-project-top-ten/",
+        type: "article",
+        difficulty: "beginner",
+        duration: "60 min",
+        tags: ["cybersecurity", "backend", "web-security", "risk"]
+      },
+      {
+        id: "role-cybersecurity-2",
+        title: "PortSwigger Web Security Academy",
+        description: "Hands-on labs for real-world web security vulnerabilities.",
+        url: "https://portswigger.net/web-security",
+        type: "practice",
+        difficulty: "intermediate",
+        duration: "4 hours",
+        tags: ["cybersecurity", "web-security", "practice", "vulnerabilities"]
       }
     ]
   }

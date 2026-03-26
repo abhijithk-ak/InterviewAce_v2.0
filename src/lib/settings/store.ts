@@ -3,7 +3,6 @@
  * Now uses MongoDB for persistence with localStorage cache
  */
 
-export type ScoringMode = "deterministic" | "hybrid"
 export type InterviewLength = 3 | 5 | 6
 
 export interface InterviewSettings {
@@ -17,7 +16,6 @@ export interface InterviewSettings {
   videoRecordingEnabled: boolean
 
   // Scoring Configuration
-  scoringMode: ScoringMode
   showScoreExplanation: boolean
 
   // UI Preferences
@@ -30,7 +28,6 @@ export const DEFAULT_SETTINGS: InterviewSettings = {
   interviewLength: 5,
   voiceQuestionsEnabled: true,
   videoRecordingEnabled: true,
-  scoringMode: "deterministic",
   showScoreExplanation: true,
   theme: "dark",
 }

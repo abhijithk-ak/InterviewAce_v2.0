@@ -35,9 +35,20 @@ type SessionData = {
   questions: Array<{
     evaluation?: {
       score?: number
-      confidence?: number
+      overallScore?: number
+      finalScore?: number
+      conceptScore?: number
+      semanticScore?: number
+      clarityScore?: number
       clarity?: number
       technical_depth?: number
+    }
+    metrics?: {
+      overallScore?: number
+      finalScore?: number
+      conceptScore?: number
+      semanticScore?: number
+      clarityScore?: number
     }
   }>
 }
@@ -50,7 +61,7 @@ type DashboardData = {
   strongestSkillScore: number
   weakestSkill: string
   weakestSkillScore: number
-  skillScores: { technical: number; confidence: number; clarity: number; communication: number }
+  skillScores: { concept: number; semantic: number; clarity: number; overall: number }
   sessions: SessionData[]
   recommendation: any
   scoreTrend: 'improving' | 'declining' | 'stable'
@@ -105,44 +116,43 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
 
     // Calculate skill breakdown from question evaluations (0-10 scale)
     const skillData = {
-      technical: [] as number[],
-      confidence: [] as number[],
+      concept: [] as number[],
+      semantic: [] as number[],
       clarity: [] as number[],
-      communication: [] as number[]
+      overall: [] as number[]
     }
 
     sessionsData.forEach(session => {
       session.questions.forEach(question => {
-        if (question.evaluation) {
-          if (question.evaluation.technical_depth !== undefined) {
-            skillData.technical.push(question.evaluation.technical_depth)
-          }
-          if (question.evaluation.confidence !== undefined) {
-            skillData.confidence.push(question.evaluation.confidence)
-          }
-          if (question.evaluation.clarity !== undefined) {
-            skillData.clarity.push(question.evaluation.clarity)
-          }
-          if (question.evaluation.score !== undefined) {
-            skillData.communication.push(question.evaluation.score)
-          }
+        const normalized = getNormalizedQuestionScores(question)
+        if (normalized.concept != null) {
+          skillData.concept.push(normalized.concept)
+        }
+        if (normalized.semantic != null) {
+          skillData.semantic.push(normalized.semantic)
+        }
+        if (normalized.clarity != null) {
+          skillData.clarity.push(normalized.clarity)
+        }
+        if (normalized.overall != null) {
+          skillData.overall.push(normalized.overall / 10)
         }
       })
     })
 
     // Calculate skill averages (0-10 scale)
     const skillAverages = {
-      technical: skillData.technical.length > 0 
-        ? skillData.technical.reduce((a, b) => a + b, 0) / skillData.technical.length 
+      concept: skillData.concept.length > 0 
+        ? skillData.concept.reduce((a, b) => a + b, 0) / skillData.concept.length 
         : 5,
-      confidence: skillData.confidence.length > 0 
-        ? skillData.confidence.reduce((a, b) => a + b, 0) / skillData.confidence.length 
+      semantic: skillData.semantic.length > 0 
+        ? skillData.semantic.reduce((a, b) => a + b, 0) / skillData.semantic.length 
         : 5,
       clarity: skillData.clarity.length > 0 
         ? skillData.clarity.reduce((a, b) => a + b, 0) / skillData.clarity.length 
         : 5,
-      communication: skillData.communication.length > 0 
-        ? skillData.communication.reduce((a, b) => a + b, 0) / skillData.communication.length 
+      overall: skillData.overall.length > 0 
+        ? skillData.overall.reduce((a, b) => a + b, 0) / skillData.overall.length 
         : 5
     }
 
@@ -155,12 +165,12 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
 
     // Calculate domain performance for recommendations (0-10 scale)
     const domainPerformance = {
-      frontend: skillAverages.technical, // Simplified mapping
-      backend: skillAverages.technical,
-      'system-design': skillAverages.technical,
-      algorithms: skillAverages.technical,
-      behavioral: skillAverages.communication,
-      general: (skillAverages.technical + skillAverages.communication) / 2
+      frontend: skillAverages.concept,
+      backend: skillAverages.concept,
+      'system-design': skillAverages.concept,
+      algorithms: skillAverages.concept,
+      behavioral: skillAverages.clarity,
+      general: (skillAverages.concept + skillAverages.overall) / 2
     }
 
     // Calculate score trend
@@ -315,10 +325,10 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
       weakestSkill: weakestSkill[0].charAt(0).toUpperCase() + weakestSkill[0].slice(1),
       weakestSkillScore: Math.round(weakestSkill[1] * 10),
       skillScores: {
-        technical:     Math.round(skillAverages.technical * 10),
-        confidence:    Math.round(skillAverages.confidence * 10),
+        concept:       Math.round(skillAverages.concept * 10),
+        semantic:      Math.round(skillAverages.semantic * 10),
         clarity:       Math.round(skillAverages.clarity * 10),
-        communication: Math.round(skillAverages.communication * 10),
+        overall:       Math.round(skillAverages.overall * 10),
       },
       sessions: sessionsData,
       recommendation,
@@ -341,6 +351,23 @@ async function getDashboardData(userEmail: string): Promise<DashboardData | null
     console.error('Dashboard data error:', error)
     return null
   }
+}
+
+function getNormalizedQuestionScores(question: any) {
+  const evaluation = question?.evaluation ?? {}
+  const metrics = question?.metrics ?? {}
+  const breakdown = evaluation.breakdown ?? {}
+
+  return {
+    concept: firstDefined(metrics.conceptScore, breakdown.conceptScore, evaluation.conceptScore),
+    semantic: firstDefined(metrics.semanticScore, breakdown.semanticScore, evaluation.semanticScore),
+    clarity: firstDefined(metrics.clarityScore, breakdown.clarityScore, evaluation.clarityScore),
+    overall: firstDefined(metrics.overallScore, evaluation.overallScore, metrics.finalScore, evaluation.finalScore, evaluation.score),
+  }
+}
+
+function firstDefined(...values: Array<number | undefined | null>) {
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value))
 }
 
 export default async function Dashboard() {

@@ -19,9 +19,9 @@ type EvaluationComparisonChartProps = {
 }
 
 const BARS = [
-  { key: 'deterministicAverage', label: 'Deterministic', color: '#6366f1' },
-  { key: 'semanticAverage',      label: 'Semantic (ML)',  color: '#8b5cf6' },
-  { key: 'hybridAverage',        label: 'Hybrid',         color: '#10b981' },
+  { key: 'deterministicAverage', label: 'Concept Score',      color: '#6366f1' },
+  { key: 'semanticAverage',      label: 'Semantic Similarity', color: '#8b5cf6' },
+  { key: 'hybridAverage',        label: 'Final Hybrid Score',  color: '#10b981' },
 ]
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -73,7 +73,7 @@ export function EvaluationComparisonChart({ data, height = 280 }: EvaluationComp
 
       <div className="grid grid-cols-3 gap-3 border-t border-neutral-700 pt-4">
         <div className="text-center">
-          <div className="text-xs text-neutral-500 mb-1">Det. vs Semantic Gap</div>
+          <div className="text-xs text-neutral-500 mb-1">Concept vs Semantic Gap</div>
           <div className={`text-base font-bold ${
             Math.abs(data.deterministicAverage - data.semanticAverage) <= 5 ? 'text-green-400' : 'text-yellow-400'
           }`}>

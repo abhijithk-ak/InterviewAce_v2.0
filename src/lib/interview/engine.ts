@@ -26,11 +26,9 @@ export interface InterviewResult {
   evaluation: {
     overall: number
     breakdown: {
-      technical: number
-      clarity: number
-      confidence: number
-      relevance: number
-      structure: number
+      conceptScore: number
+      semanticScore: number
+      clarityScore: number
     }
   }
   feedback: string
@@ -69,7 +67,7 @@ export async function processAnswer({
     return {
       evaluation: {
         overall: 100, // Greeting is always perfect
-        breakdown: { technical: 10, clarity: 10, confidence: 10, relevance: 10, structure: 10 }
+        breakdown: { conceptScore: 10, semanticScore: 10, clarityScore: 10 }
       },
       feedback: "Welcome! Let's begin with your first question.",
       followUp: firstQuestion.text,
@@ -100,7 +98,7 @@ export async function processAnswer({
 
   let aiUsed = false
   let aiError: string | undefined
-  let feedback = algorithmResult.feedback
+  let feedback = algorithmResult.explanation
   
   // 2. Try AI enhancement if available
   if (process.env.OPENROUTER_API_KEY) {

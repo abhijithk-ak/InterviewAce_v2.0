@@ -22,8 +22,8 @@ async function testSemanticScoring() {
     console.log(`  Weight: ${result1.semanticWeight}`)
     console.log()
   } catch (error) {
-    console.error('  ❌ Error:', error.message)
-    console.error('  Stack:', error.stack)
+    console.error('  ❌ Error:', error instanceof Error ? error.message : String(error))
+    console.error('  Stack:', error instanceof Error ? error.stack : '')
   }
   
   // Test case 2: Irrelevant answer
@@ -40,8 +40,8 @@ async function testSemanticScoring() {
     console.log(`  Weight: ${result2.semanticWeight}`)
     console.log()
   } catch (error) {
-    console.error('  ❌ Error:', error.message)
-    console.error('  Stack:', error.stack)
+    console.error('  ❌ Error:', error instanceof Error ? error.message : String(error))
+    console.error('  Stack:', error instanceof Error ? error.stack : '')
   }
   
   // Test case 3: Warmup model
@@ -50,8 +50,8 @@ async function testSemanticScoring() {
     await warmupSemanticModel()
     console.log('  ✅ Model warmed up successfully')
   } catch (error) {
-    console.error('  ❌ Error:', error.message)
-    console.error('  Stack:', error.stack)
+    console.error('  ❌ Error:', error instanceof Error ? error.message : String(error))
+    console.error('  Stack:', error instanceof Error ? error.stack : '')
   }
 }
 

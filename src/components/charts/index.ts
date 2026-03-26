@@ -1,5 +1,6 @@
 export { ScoreTrendChart } from './ScoreTrendChart'
 export { SkillBreakdownChart } from './SkillBreakdownChart'
 export { SessionTypeChart } from './SessionTypeChart'
+export { PerformanceByTypeChart } from './PerformanceByTypeChart'
 export { WeeklyActivityChart } from './WeeklyActivityChart'
 export { EvaluationComparisonChart } from './EvaluationComparisonChart'

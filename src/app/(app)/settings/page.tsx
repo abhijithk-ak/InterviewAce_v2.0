@@ -19,7 +19,6 @@ import {
   resetSettingsToAPI,
   AVAILABLE_MODELS,
   type InterviewSettings,
-type ScoringMode,
   type InterviewLength,
 } from "@/lib/settings/store"
 
@@ -289,41 +288,6 @@ export default function SettingsPage() {
               Scoring Configuration
             </h2>
             <div className="space-y-4">
-              {/* Scoring Mode */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Scoring Mode
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["deterministic", "hybrid"] as ScoringMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => updateSetting("scoringMode", mode)}
-                      className={`px-4 py-3 rounded-lg border transition-colors ${
-                        settings.scoringMode === mode
-                          ? "bg-blue-600 border-blue-500 text-white"
-                          : "bg-neutral-700 border-neutral-600 text-neutral-300 hover:border-neutral-500"
-                      }`}
-                    >
-                      <div className="font-medium capitalize">{mode}</div>
-                      <div className="text-xs opacity-75">
-                        {mode === "deterministic"
-                          ? "Rule-based NLP"
-                          : "NLP + Semantic ML"}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {settings.scoringMode === "hybrid" && (
-                  <div className="mt-2 p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
-                    <p className="text-xs text-blue-300">
-                      <strong>Note:</strong> Hybrid mode uses semantic similarity (MiniLM) for enhanced
-                      evaluation. May be slower on first load.
-                    </p>
-                  </div>
-                )}
-              </div>
-
               {/* Show Score Explanation */}
               <div className="flex items-center justify-between p-4 bg-neutral-700 rounded-lg">
                 <div>

@@ -1,6 +1,6 @@
 /**
- * Interview Respond API Route - Hybrid AI + Algorithmic
- * Handles answer processing with AI conversational flow and deterministic scoring
+ * Interview Respond API Route - AI + MiniLM Hybrid
+ * Handles answer processing with hybrid evaluation and conversational flow.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -10,6 +10,12 @@ import { UserSettingsModel } from "@/lib/db/models/UserSettings"
 import { UserProfileModel } from "@/lib/db/models/UserProfile"
 import { connectDB } from "@/lib/db/mongoose"
 import { type UserProfile } from "@/lib/ai/prompts"
+
+const DEFAULT_USER_SETTINGS = {
+  aiModel: "meta-llama/llama-3.2-3b-instruct:free",
+  aiTemperature: 0.7,
+  interviewLength: 5 as 3 | 5 | 6,
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,13 +38,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Load user settings from MongoDB
-    await connectDB()
-    const userSettings = await UserSettingsModel.getOrCreate(session.user.email)
+    // Load user settings from MongoDB (fallback to defaults if DB unavailable)
+    let userSettings = DEFAULT_USER_SETTINGS
+    try {
+      await connectDB()
+      const dbSettings = await UserSettingsModel.getOrCreate(session.user.email)
+      userSettings = {
+        aiModel: dbSettings.aiModel,
+        aiTemperature: dbSettings.aiTemperature,
+        interviewLength: dbSettings.interviewLength,
+      }
+    } catch (dbError) {
+      console.warn("Interview respond: settings DB unavailable, using defaults", dbError)
+    }
 
     // Load user profile from MongoDB (optional - may not exist if onboarding skipped)
     let userProfile: UserProfile | undefined
     try {
+      await connectDB()
       const profile = await UserProfileModel.findOne({ userId: session.user.email })
       if (profile) {
         userProfile = {
@@ -57,7 +74,6 @@ export async function POST(req: NextRequest) {
     // Add user settings and profile to params
     const params = {
       ...body,
-      scoringMode: userSettings.scoringMode,
       aiModel: userSettings.aiModel,
       aiTemperature: userSettings.aiTemperature,
       interviewLength: userSettings.interviewLength,
@@ -71,11 +87,12 @@ export async function POST(req: NextRequest) {
       success: true,
       evaluation: {
         score: result.score,
-        deterministicScore: result.deterministicScore,
-        semanticScore: result.semanticScore,
+        overallScore: result.overallScore,
         finalScore: result.finalScore,
         breakdown: result.breakdown,
-        subscores: result.subscores,
+        explanation: result.explanation,
+        errors: result.errors,
+        evaluationMethod: result.evaluationMethod,
         strengths: result.strengths,
         improvements: result.improvements,
         feedback: result.feedback
@@ -97,13 +114,15 @@ export async function POST(req: NextRequest) {
       success: true,
       evaluation: {
         score: 60,
+        overallScore: 60,
         breakdown: {
-          technical: 6,
-          clarity: 6,
-          confidence: 6,
-          relevance: 6,
-          structure: 6
+          conceptScore: 0,
+          semanticScore: 0,
+          clarityScore: 5,
         },
+        explanation: "Evaluation service unavailable.",
+        errors: ["Evaluation service unavailable"],
+        evaluationMethod: "AI + MiniLM Hybrid",
         feedback: "Thank you for your response. Let's continue with the next question."
       },
       nextQuestion: null,

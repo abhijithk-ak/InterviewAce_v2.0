@@ -659,6 +659,262 @@ const QUESTION_BANK: Question[] = [
     text: "What do you consider your greatest strength and weakness as a developer?",
     sampleAnswer: "Strength: Problem-solving and systematic debugging. I excel at breaking down complex problems, analyzing root causes, and implementing robust solutions. Recent example: Diagnosed production performance issue by analyzing logs and metrics, reducing latency by 70%. I enjoy diving deep into technical challenges and finding elegant solutions. Weakness: Sometimes over-engineer solutions. I'm working on balancing perfect architecture with practical delivery. Now I actively ask: 'Is this complexity necessary?' and use ADRs to evaluate trade-offs. This has helped me ship faster while maintaining quality, and I've become better at recognizing when 'good enough' is actually good enough."
   },
+  {
+    id: "tech-general-easy-1",
+    category: "technical",
+    role: "general",
+    difficulty: "easy",
+    text: "What is the difference between horizontal scaling and vertical scaling?",
+    sampleAnswer: "Vertical scaling means increasing resources on a single server (more CPU/RAM). Horizontal scaling means adding more servers and distributing load. Vertical scaling is simpler but has hardware limits. Horizontal scaling is more resilient and supports large growth, but requires load balancing, stateless services, and distributed data strategies."
+  },
+  {
+    id: "tech-general-medium-1",
+    category: "technical",
+    role: "general",
+    difficulty: "medium",
+    text: "How would you investigate and fix a memory leak in a production service?",
+    sampleAnswer: "First confirm leak with metrics (heap growth over time, GC pressure). Reproduce under load in staging, collect heap snapshots and profiles, and compare object retention paths. Common causes are unbounded caches, listeners not removed, circular references, and long-lived collections. Apply fixes, add limits/TTL, and validate with canary deployment and memory dashboards."
+  },
+  {
+    id: "tech-general-hard-1",
+    category: "technical",
+    role: "general",
+    difficulty: "hard",
+    text: "Design a safe rollout strategy for a breaking API change used by multiple clients.",
+    sampleAnswer: "Use versioned APIs (e.g., /v1 and /v2) and maintain backward compatibility during migration. Add feature flags and staged rollout by client cohort. Publish migration docs and SDK updates, provide deprecation timelines, and monitor adoption. Use contract tests and compatibility checks in CI, then remove old version after adoption and a monitored sunset period."
+  },
+  {
+    id: "beh-7",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "Tell me about a time you disagreed with a technical decision. What did you do?",
+    sampleAnswer: "I first clarified goals and constraints, then documented trade-offs with data (performance, cost, delivery risk). I proposed alternatives in a design review and asked for feedback instead of pushing my preference. We selected a hybrid option that met deadlines and reduced long-term risk. The key was focusing on outcomes and evidence, not ego."
+  },
+  {
+    id: "beh-8",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "Describe a time you had to manage multiple priorities under pressure.",
+    sampleAnswer: "I ranked tasks by business impact and deadlines, aligned scope with stakeholders, and split work into must-have vs nice-to-have. I communicated daily status and risks, delegated where possible, and protected focus time for critical items. We delivered the critical path on time and scheduled follow-up improvements in the next sprint."
+  },
+  {
+    id: "beh-9",
+    category: "behavioral",
+    role: "general",
+    difficulty: "hard",
+    text: "Tell me about a failure in a project and what you learned from it.",
+    sampleAnswer: "In one release, we underestimated integration complexity and shipped with partial observability, causing delayed incident diagnosis. I led a retrospective, added pre-release integration checklists, error budgets, and better alerting. The next releases were smoother with faster incident response. I learned to treat observability and risk planning as first-class deliverables."
+  },
+  {
+    id: "sys-5",
+    category: "system-design",
+    role: "general",
+    difficulty: "medium",
+    text: "Design a rate limiter for a public API that supports per-user and per-IP limits.",
+    sampleAnswer: "Use token bucket or sliding window counters in Redis. Key by user ID and IP, with separate quotas and burst control. Enforce limits at API gateway for low latency, return 429 with Retry-After headers, and log events for abuse analysis. Add distributed consistency via Redis clustering and fallback rules if Redis is degraded."
+  },
+  {
+    id: "sys-6",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "Design a distributed job queue system for background processing.",
+    sampleAnswer: "Core components: producer API, durable queue (Kafka/RabbitMQ/SQS), worker pools, scheduler, retry/DLQ, and monitoring. Use idempotent jobs with dedup keys, visibility timeouts, and exponential backoff retries. Support priority queues and partitioning by tenant/workload. Add metrics for queue depth, processing latency, and failure rates with autoscaling policies."
+  },
+  {
+    id: "sys-7",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "How would you design a multi-tenant SaaS architecture with strong isolation?",
+    sampleAnswer: "Choose isolation model per tier: shared app with tenant-aware auth plus data isolation via row-level security, schema-per-tenant, or database-per-tenant for high compliance. Enforce tenant context in every request path, use scoped encryption keys, and separate quotas/rate limits. Provide tenant-level observability, backup/restore boundaries, and migration tooling for scaling between isolation tiers."
+  },
+  {
+    id: "hr-5",
+    category: "hr",
+    role: "general",
+    difficulty: "easy",
+    text: "How do you prefer to receive feedback, and how do you act on it?",
+    sampleAnswer: "I prefer direct, specific, and timely feedback with examples. I usually summarize the feedback, confirm expectations, and turn it into an action plan with measurable outcomes. I follow up after a few weeks to confirm progress and adjust if needed."
+  },
+  {
+    id: "hr-6",
+    category: "hr",
+    role: "general",
+    difficulty: "easy",
+    text: "What motivates you to do your best work?",
+    sampleAnswer: "I’m motivated by meaningful problems, ownership, and continuous learning. I do my best work when goals are clear, impact is visible, and collaboration is strong. I also value environments where quality and customer outcomes are prioritized over just output volume."
+  },
+  {
+    id: "hr-7",
+    category: "hr",
+    role: "general",
+    difficulty: "medium",
+    text: "How do you handle situations where priorities change suddenly?",
+    sampleAnswer: "I quickly reassess impact, dependencies, and delivery risk, then align with stakeholders on revised scope and timeline. I communicate trade-offs clearly and document decisions to keep the team synchronized. This approach keeps momentum while reducing confusion and rework."
+  },
+  {
+    id: "beh-10",
+    category: "behavioral",
+    role: "general",
+    difficulty: "easy",
+    text: "Tell me about a time you helped a teammate succeed.",
+    sampleAnswer: "A teammate was struggling with a release-critical module. I paired with them to break the task into smaller milestones, shared examples from similar implementations, and helped validate with tests. We delivered on time and they later owned similar tasks independently."
+  },
+  {
+    id: "beh-11",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "Describe a time you had incomplete requirements. How did you proceed?",
+    sampleAnswer: "I documented assumptions, identified unknowns, and scheduled a short discovery with stakeholders. I delivered a minimal version behind a feature flag and iterated as requirements clarified. This reduced rework and kept delivery moving."
+  },
+  {
+    id: "beh-12",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "Share an example of receiving negative feedback and how you responded.",
+    sampleAnswer: "I was told my updates were too technical for non-engineering stakeholders. I changed my status format to include impact, risk, and next steps in plain language. Stakeholder alignment improved significantly in subsequent reviews."
+  },
+  {
+    id: "beh-13",
+    category: "behavioral",
+    role: "general",
+    difficulty: "hard",
+    text: "Tell me about a high-impact decision you made with limited time.",
+    sampleAnswer: "During an incident, I chose to roll back a risky release rather than patch live. I communicated clearly, assigned owners, and prepared a postmortem. Service recovered quickly and we later fixed root causes with safer deployment checks."
+  },
+  {
+    id: "beh-14",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "Describe a situation where you influenced without authority.",
+    sampleAnswer: "I proposed standardized API error formats across teams. I created a lightweight RFC, shared migration examples, and demonstrated reduced debugging time. Teams adopted it gradually because the benefit was measurable and implementation effort was low."
+  },
+  {
+    id: "beh-15",
+    category: "behavioral",
+    role: "general",
+    difficulty: "medium",
+    text: "How do you handle ambiguity when planning a new feature?",
+    sampleAnswer: "I define decision checkpoints, prototype high-risk pieces, and create explicit assumptions. I align stakeholders early on scope and success metrics, then iterate with short feedback loops to avoid building in the wrong direction."
+  },
+  {
+    id: "beh-16",
+    category: "behavioral",
+    role: "general",
+    difficulty: "hard",
+    text: "Tell me about a project where priorities conflicted between teams.",
+    sampleAnswer: "I mapped dependencies and quantified impact by delay, then proposed phased delivery to satisfy both teams. We agreed on a shared timeline and contract boundaries. That unblocked integration while preserving each team’s roadmap commitments."
+  },
+  {
+    id: "hr-8",
+    category: "hr",
+    role: "general",
+    difficulty: "easy",
+    text: "Why are you looking for a new opportunity now?",
+    sampleAnswer: "I’m looking for a role with broader technical ownership and stronger product impact. I’ve learned a lot in my current role and now want to apply that experience in a team focused on scalable systems and high-quality engineering practices."
+  },
+  {
+    id: "hr-9",
+    category: "hr",
+    role: "general",
+    difficulty: "easy",
+    text: "How do you define success in your first 90 days?",
+    sampleAnswer: "Success means understanding the domain, shipping at least one meaningful contribution, and building trust with the team. I’d focus on learning the architecture, reducing one pain point, and documenting decisions clearly."
+  },
+  {
+    id: "hr-10",
+    category: "hr",
+    role: "general",
+    difficulty: "medium",
+    text: "What kind of team environment helps you perform best?",
+    sampleAnswer: "I perform best in teams with clear ownership, open communication, and frequent feedback. I value strong code review culture, measurable goals, and psychological safety where people can challenge ideas respectfully."
+  },
+  {
+    id: "hr-11",
+    category: "hr",
+    role: "general",
+    difficulty: "medium",
+    text: "How do you approach work-life balance in high-pressure periods?",
+    sampleAnswer: "I prioritize ruthlessly, communicate risks early, and avoid silent overwork. During critical periods, I commit to focused execution windows and follow-up recovery. Sustainable pace keeps quality high and prevents burnout."
+  },
+  {
+    id: "hr-12",
+    category: "hr",
+    role: "general",
+    difficulty: "medium",
+    text: "What salary and growth expectations do you have for this role?",
+    sampleAnswer: "I’m looking for compensation aligned with market and role scope, but growth opportunity matters equally. I value a path where I can expand architectural ownership, mentor others, and be evaluated on clear impact metrics."
+  },
+  {
+    id: "hr-13",
+    category: "hr",
+    role: "general",
+    difficulty: "hard",
+    text: "How would your previous manager describe your working style?",
+    sampleAnswer: "They’d describe me as dependable, structured, and proactive in communication. I tend to surface risks early, write clear technical proposals, and help unblock teammates while keeping delivery goals in view."
+  },
+  {
+    id: "hr-14",
+    category: "hr",
+    role: "general",
+    difficulty: "hard",
+    text: "If selected, what would you focus on in your first 6 months?",
+    sampleAnswer: "I’d focus on mastering system context, improving one reliability/performance bottleneck, and strengthening team execution quality through better testing and documentation practices. I’d also align my roadmap with product priorities and measurable outcomes."
+  },
+  {
+    id: "sys-8",
+    category: "system-design",
+    role: "general",
+    difficulty: "medium",
+    text: "Design a distributed cache invalidation strategy for an e-commerce catalog.",
+    sampleAnswer: "Use cache-aside with Redis and event-driven invalidation via Kafka. Product updates publish invalidation events keyed by product/category. Services subscribe and evict relevant keys. Add TTL as safety net, versioned keys during schema changes, and monitoring for stale-read rate."
+  },
+  {
+    id: "sys-9",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "Design an API gateway for microservices with authentication, throttling, and observability.",
+    sampleAnswer: "Gateway responsibilities: JWT validation, request routing, rate limiting, and centralized logging/tracing. Use token introspection/cache, per-client quotas, and circuit breakers. Emit metrics for latency/error rates and propagate trace IDs. Keep gateway thin and push domain logic to services."
+  },
+  {
+    id: "sys-10",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "How would you design a globally distributed read-heavy service with low latency?",
+    sampleAnswer: "Use multi-region deployment with geo-routing and regional caches. Replicate data using eventual consistency for read-heavy paths and strong consistency only where required. Add CDN for static/edge content, regional failover, and conflict resolution strategy for writes."
+  },
+  {
+    id: "sys-11",
+    category: "system-design",
+    role: "general",
+    difficulty: "medium",
+    text: "Design a search autocomplete service for millions of queries per day.",
+    sampleAnswer: "Maintain prefix index in memory (trie or n-gram index), backed by Elasticsearch for updates. Serve top suggestions from Redis cache with popularity boosting and typo tolerance. Stream click/query feedback to ranking pipeline, and refresh indices incrementally."
+  },
+  {
+    id: "sys-12",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "Design an audit logging platform for enterprise compliance.",
+    sampleAnswer: "Collect append-only events via message bus, store immutable logs in WORM-compatible storage, and index searchable metadata separately. Enforce tenant isolation, encryption at rest/in transit, retention policies, and tamper-evidence with hash chaining/signatures."
+  },
+  {
+    id: "sys-13",
+    category: "system-design",
+    role: "general",
+    difficulty: "hard",
+    text: "Design a resilient payment processing pipeline with exactly-once semantics.",
+    sampleAnswer: "Use idempotency keys at API boundary, transactional outbox for event publishing, and state machine for payment lifecycle. Workers consume from durable queue with dedup checks. Reconciliation jobs compare provider settlements. Support retries with backoff and compensating flows for partial failures."
+  },
 ]
 
 type InterviewConfig = {
