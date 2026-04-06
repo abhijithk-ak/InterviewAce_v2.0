@@ -54,6 +54,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.18
+      '@types/estree':
+        specifier: ^1.0.8
+        version: 1.0.8
       '@types/node':
         specifier: ^20
         version: 20.19.31
@@ -63,6 +66,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.10)
+      '@types/whatwg-url':
+        specifier: ^13.0.0
+        version: 13.0.0
       eslint:
         specifier: ^9
         version: 9.39.2(jiti@2.6.1)
