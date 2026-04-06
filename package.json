@@ -25,7 +25,6 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^2.12.7",
-    "sharp": "^0.34.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -40,5 +39,14 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "onnxruntime-node",
+      "protobufjs",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }
