@@ -93,7 +93,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto app-scrollbar">
         {NAV_SECTIONS.map((section) => (
           <div key={section.title}>
             <div className="px-2 mb-1.5">

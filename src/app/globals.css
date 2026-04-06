@@ -23,6 +23,38 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  overflow: hidden;
+}
+
+/* Desktop default scaling so the app matches a comfortable ~80-90% browser zoom feel */
+@media (min-width: 1280px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* Subtle in-app scrollbar style */
+.app-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(115, 115, 115, 0.6) transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.app-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(115, 115, 115, 0.55);
+  border-radius: 999px;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(163, 163, 163, 0.7);
 }
 
 @keyframes pageEnter {

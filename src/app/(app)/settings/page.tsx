@@ -109,7 +109,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white -m-8">
+    <div className="min-h-full bg-neutral-900 text-white">
       {/* Header */}
       <div className="border-b border-neutral-700 bg-neutral-800">
         <div className="max-w-4xl mx-auto px-6 py-6">

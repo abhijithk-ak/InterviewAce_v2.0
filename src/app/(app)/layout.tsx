@@ -7,9 +7,9 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-screen bg-neutral-950">
+    <div className="flex h-dvh overflow-hidden bg-neutral-950">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-neutral-950">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-neutral-950 app-scrollbar">
         <PageTransition>
           {children}
         </PageTransition>
