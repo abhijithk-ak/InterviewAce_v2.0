@@ -625,7 +625,7 @@ export default function ImprovedResearchDashboard() {
                     Weighted Contribution of Evaluation Components
                   </h2>
                   <p className="text-sm text-neutral-400 mb-4">
-                    Weighted component contributions using the production formula: 0.60 concept, 0.25 semantic, 0.15 clarity.
+                    Weighted component contributions using the production formula: 0.55 concept, 0.30 semantic, 0.15 clarity.
                   </p>
                   <div className={CHART_EXPORT_WRAPPER}>
                     <ResponsiveContainer width="100%" height={320}>

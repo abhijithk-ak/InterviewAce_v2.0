@@ -4,6 +4,7 @@ import { signIn, useSession } from "next-auth/react"
 import { Button } from "@/components/ui"
 import { redirect } from "next/navigation"
 import { useEffect } from "react"
+import { Brain, Gauge, Sparkles, Target, Zap } from "lucide-react"
 
 export default function Home() {
   const { data: session, status } = useSession()
@@ -19,14 +20,24 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-neutral-50">
+    <div className="landing-shell min-h-screen overflow-x-hidden text-neutral-900">
+      <div className="landing-orb orb-a" />
+      <div className="landing-orb orb-b" />
+      <div className="landing-orb orb-c" />
+
       {/* Header */}
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-[#111111]/72 backdrop-blur-lg">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-neutral-900">InterviewAce</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-white">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-black">
+                <Zap className="h-4 w-4" />
+              </span>
+              InterviewAce
+            </h1>
             <Button
               variant="outline"
+              className="border-white/20 bg-white/10 text-white hover:bg-white/20"
               onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
             >
               Sign In
@@ -36,74 +47,80 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center pt-20 pb-16">
-          <h2 className="text-5xl font-bold text-neutral-900 mb-6">
-            Ace Your Next Interview
+      <main className="relative z-10 mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <section className="pt-18 pb-14 text-center sm:pt-24">
+          <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-neutral-200 backdrop-blur-sm landing-fade-up">
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            AI interview practice with research-grade scoring
+          </div>
+
+          <h2 className="landing-rise-in mx-auto max-w-4xl text-5xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
+            Ace your next interview with precision coaching
           </h2>
-          <p className="text-xl text-neutral-600 mb-8 max-w-2xl mx-auto">
-            Practice with AI-powered mock interviews and get instant feedback 
-            to improve your skills and land your dream job.
+
+          <p className="landing-fade-up mx-auto mt-6 max-w-3xl text-xl leading-relaxed text-neutral-300">
+            Simulate real interviews, receive instant hybrid feedback, and track your
+            progress across Technical, Behavioral, System Design, and HR rounds.
           </p>
-          <Button
-            variant="primary"
-            className="text-lg px-8 py-3"
-            onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
-          >
-            Get Started Free
-          </Button>
-        </div>
+
+          <div className="landing-fade-up mt-9 flex items-center justify-center">
+            <Button
+              variant="primary"
+              className="min-w-[220px] text-lg px-8 py-3 shadow-lg shadow-neutral-900/20"
+              onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
+            >
+              Get Started Free
+            </Button>
+          </div>
+
+          <div className="landing-fade-up mx-auto mt-10 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="landing-chip">13+ Target Roles</div>
+            <div className="landing-chip">Hybrid Scoring Engine</div>
+            <div className="landing-chip">Session Analytics</div>
+          </div>
+        </section>
 
         {/* Features */}
-        <div className="grid md:grid-cols-3 gap-8 py-16">
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
+        <section className="grid gap-5 py-10 md:grid-cols-3">
+          <div className="landing-card">
+            <div className="landing-icon">
+              <Target className="h-5 w-5 text-neutral-800" />
             </div>
-            <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-              Realistic Practice
-            </h3>
-            <p className="text-neutral-600">
-              Practice with questions tailored to your target role and experience level
+            <h3 className="mb-2 text-xl font-semibold text-white">Realistic Practice</h3>
+            <p className="text-neutral-300">
+              Role-specific questions, adaptive flow, and interview formats that mirror
+              real hiring conversations.
             </p>
           </div>
 
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
+          <div className="landing-card">
+            <div className="landing-icon">
+              <Brain className="h-5 w-5 text-neutral-800" />
             </div>
-            <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-              AI Feedback
-            </h3>
-            <p className="text-neutral-600">
-              Get instant, actionable feedback on your answers to improve faster
+            <h3 className="mb-2 text-xl font-semibold text-white">AI Feedback</h3>
+            <p className="text-neutral-300">
+              Multi-dimensional scoring with concept, semantic, and clarity insights for
+              every answer.
             </p>
           </div>
 
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+          <div className="landing-card">
+            <div className="landing-icon">
+              <Gauge className="h-5 w-5 text-neutral-800" />
             </div>
-            <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-              Track Progress
-            </h3>
-            <p className="text-neutral-600">
-              Monitor your improvement and identify areas to focus on
+            <h3 className="mb-2 text-xl font-semibold text-white">Track Progress</h3>
+            <p className="text-neutral-300">
+              Monitor trends, identify weak areas, and follow structured improvements
+              session by session.
             </p>
           </div>
-        </div>
+        </section>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-neutral-200 mt-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <p className="text-center text-neutral-500 text-sm">
+      <footer className="relative z-10 border-t border-white/10 bg-[#111111]/45">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <p className="text-center text-sm text-neutral-400">
             © 2026 InterviewAce. Built with Next.js and AI.
           </p>
         </div>
